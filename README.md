@@ -16,14 +16,14 @@ KO-Punisher ile job bazında combo ve tuş düzeni oluşturabilir, skill ikonlar
 
 | Alan | Mevcut işlevler |
 |---|---|
-| **Job ve profiller** | Archer, Rogue/Assassin, Priest, Battle Priest, Mage ve Warrior için ayrı ayarlar; adlandırılmış profiller |
+| **Job ve profiller** | Ana menü sırası: Warrior, Assassin, Archery, Mage, Priest, Farm, Upgrade, Ayarlar. BP ayrı menü değil, Priest > Attack içinde `bp-rr` modu olarak saklanır |
 | **Skill Bar** | F1–F8, bar başına 10 slot; sağdaki ikon havuzundan sürükle-bırak, arama ve kategori filtresi |
 | **Otomatik tuş eşleştirme** | Skill kimliğinden bar ve tuş çözümleme; farklı F barlarındaki skilleri çağırma |
 | **Görsel kalibrasyon** | Ekrandan seçilen tek barı katalog ikonlarıyla eşleştirme ve onaylı içe aktarma |
-| **Combo ve Minor** | Job bazlı presetler, ayarlanabilir zamanlamalar, bağımsız Minor döngüsü, tek tur testi |
+| **Combo, Minor ve pot** | Job bazlı presetler, ayarlanabilir zamanlamalar, bağımsız Minor döngüsü, tek tur testi, kalibre edilen HP/MP bölgelerinden otomatik pot |
 | **Farm araçları** | Buff zamanlayıcı, OCR hedef adı filtresi ve sınırlı sayıda pazar mesajı gönderimi |
 | **Envanter inceleme** | Slot sınıflandırma, tooltip OCR ve okunabilen item bilgilerinin incelenmesi |
-| **Kontrol ve tanılama** | Hedef pencere odağı kontrolü, acil durdurma, tuş bırakma ve isteğe bağlı input tanılama kaydı |
+| **Kontrol ve tanılama** | Hedef pencere odağı kontrolü, acil durdurma, tuş bırakma ve Ayarlar altında isteğe bağlı input tanılama kaydı |
 
 Uygulama Windows giriş API'lerini kullanır. Oyun belleği okuma, oyun içine enjeksiyon, kernel driver veya koruma atlatma içermez.
 
@@ -76,10 +76,11 @@ dotnet run --project Tests/Tests.csproj -c Release
 
 1. Job'unuzu ve combo presetini seçin.
 2. **Skill Bar** sekmesinde oyundaki bar düzeninizi oluşturun. Katalogdan ikon sürükleyin veya görsel kalibrasyonu kullanın.
-3. Combo ve Minor tetiklerini kontrol edin. Varsayılan tetikler `XBUTTON1` ve `XBUTTON2`; Minor ataması başlangıçta boştur.
-4. **Kaydet** ile ayarlarınızı saklayın. Kullanıcı ayarları `%LOCALAPPDATA%\KO-Punisher\settings.json` altında tutulur.
-5. İlk denemede **3 sn sonra tek tur** seçeneğiyle oyuna geçin ve tuş sırasını kontrol edin.
-6. **Başlat / Hazırla** sonrası, varsayılan basılı-tut modunda combo tetiğini basılı tutarak çalıştırın; bırakarak ilgili döngüyü durdurun.
+3. Combo ve Minor tetiklerini kontrol edin. Varsayılan tetikler `XBUTTON1` ve `XBUTTON2`; Minor ataması başlangıçta boştur. Battle Priest için Priest sayfasında `bp-rr` presetini seçin.
+4. **Diğer** sekmesinde otomatik HP/MP pot gerekiyorsa ayrı ayrı açın; yüzde eşiği, fallback tuş, cooldown/okuma aralığı ve HP/MP ekran bölgesini kalibre edin. Okunamayan OCR değeri sıfır sayılmaz ve tuş göndermez.
+5. **Kaydet** ile ayarlarınızı saklayın. Kullanıcı ayarları `%LOCALAPPDATA%\KO-Punisher\settings.json` altında tutulur.
+6. İlk denemede **3 sn sonra tek tur** seçeneğiyle oyuna geçin ve tuş sırasını kontrol edin.
+7. **Başlat / Hazırla** sonrası, varsayılan basılı-tut modunda combo tetiğini basılı tutarak çalıştırın; bırakarak ilgili döngüyü durdurun.
 
 Varsayılan acil durdurma tuşu **F12**'dir. Hedef pencere odağı kaybolunca motor basılı tuşları bırakır; geri dönünce yeniden tetik gerekir. Skill bar adresleriyle çakışan kontrol kısayollarını değiştirin.
 
@@ -104,6 +105,9 @@ Bu düzende `3-5` **6 → 5**, `5-3` **5 → 6** gönderir. Slide presetleri ara
 4. Tanınmayan slotları elle doldurup yerleşimi kaydedin.
 
 Belirsiz eşleşmeler boş kalır. İptal veya sıfır eşleşme önceki yerleşimi değiştirmez. Ayrıntılar: [Skill Bar ve kalibrasyon](docs/skill-bar-calibration.md).
+
+Eski bağımsız OCR combo-test sayfası, ona ait butonlar ve kullanılmayan ekran kodları kaldırıldı. Tekrarlanan eski skill bar editörü de kaldırıldı; tek düzenleme kaynağı **Skill Bar** sekmesidir. OCR yetenekleri Skill Bar kalibrasyonu, Farm hedef adı okuma, Upgrade/envanter okuma ve HP/MP pot bölgeleri için korunur.
+`HP Potion` ve `MP Potion` sembolleri yerel, ayırt edilebilir UI/katalog sembolleridir; gerçek oyun pot ikon şablonu olarak doğrulanmadı.
 
 ## Testler
 
@@ -135,7 +139,7 @@ Testler; combo sırası, bar adresleme, profil ayrımı, iptal/odak kaybı, ikon
 - Görsel kalibrasyon bir seferde **tek 10 slotlu barı** tarar. Canlı Windows skill taraması ve farklı DPI düzenleri için doğrulama sürüyor.
 - `70-72`, `70-60`, `70-72-60` presetleri görsel yerleşimde ilk iki/üç saldırı slotunu kullanır; katalogdan skill seviyesi çıkarmaz. [Eşleştirme kurallarını](docs/skill-bar-calibration.md#combo-eşleştirmesi) kontrol edin.
 - Cooldown ve zamanlamalar ayarlanabilir tahminlerdir. Windows'a başarılı tuş gönderimi, oyunda başarılı skill kullanımı anlamına gelmez.
-- HP/MP izleme ve otomatik pot kontrolü yoktur. Minor kullanımı mana tüketebilir.
+- HP/MP otomatik pot yalnız kalibre edilen ekran bölgelerini OCR ile okur. Yüzde ya da tek bir `current/max` değeri net okunmazsa girdi göndermez; canlı oyun kabulü ayrıca doğrulanmalıdır.
 - Envanter/tooltip okuma, otomatik item basma değildir. Anvil, scroll kullanımı ve otomatik upgrade uygulanmadı.
 - Exclusive fullscreen ekran yakalama ve durum panelini etkileyebilir. Pencere/borderless modunda deneyin.
 

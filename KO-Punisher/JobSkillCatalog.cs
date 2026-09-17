@@ -13,6 +13,8 @@ public static class JobSkillCatalog
 {
     private static readonly JobSkillDef[] Entries =
     [
+        new(ResourceReader.HpPotionSkillId, "HP Potion", [ClassType.Assassin, ClassType.Archer, ClassType.Warrior, ClassType.Mage, ClassType.Priest, ClassType.BattlePriest], "Utility", "catalog/consumable-hp_potion.png", "local:generated"),
+        new(ResourceReader.MpPotionSkillId, "MP Potion", [ClassType.Assassin, ClassType.Archer, ClassType.Warrior, ClassType.Mage, ClassType.Priest, ClassType.BattlePriest], "Utility", "catalog/consumable-mp_potion.png", "local:generated"),
         // MAGE /data/0/nodes/2
         new("Mage_Flash", "Flash", [ClassType.Mage], "Attack", "catalog/mage-flash.png", "https://kobugda.com/api/skills?characterClass=MAGE"),
         // MAGE /data/0/nodes/3

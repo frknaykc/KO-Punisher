@@ -55,6 +55,34 @@ internal sealed class WindowMonsterReader(string process, MonsterFilterSettings 
     }
 }
 
+internal sealed class WindowResourceReader(string process, HealthManaSettings settings) : IResourceReader
+{
+    private readonly HealthManaSettings _settings = Settings.Snapshot(settings);
+
+    public async Task<ResourceReading?> ReadAsync(ResourceKind kind, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        var lane = kind == ResourceKind.Hp ? _settings.Hp : _settings.Mp;
+        if (!lane.Enabled || !lane.Region.IsSet) return null;
+        IntPtr window = GameWindow.RequireForeground(process);
+        Rectangle bounds = GameWindow.ClientBounds(window);
+        if (lane.ClientWidth != bounds.Width || lane.ClientHeight != bounds.Height)
+            throw new InvalidOperationException($"{Name(kind)} OCR bölgesi oyun boyutu değiştiği için geçersiz; yeniden kalibre edin.");
+        var r = lane.Region;
+        var crop = new Rectangle(bounds.X + r.X, bounds.Y + r.Y, r.W, r.H);
+        if (!bounds.Contains(crop) || !System.Windows.Forms.SystemInformation.VirtualScreen.Contains(crop))
+            throw new InvalidOperationException($"{Name(kind)} OCR bölgesi oyun/ekran dışında.");
+        long capturedAt = Environment.TickCount64;
+        string text = await OcrReader.ReadAsync(crop, token).ConfigureAwait(false);
+        token.ThrowIfCancellationRequested();
+        if (GameWindow.RequireForeground(process) != window || GameWindow.ClientBounds(window) != bounds)
+            throw new InvalidOperationException($"{Name(kind)} OCR sırasında oyun penceresi değişti; tekrar başlatın.");
+        return ResourceReader.Parse(kind, text, capturedAt);
+    }
+
+    private static string Name(ResourceKind kind) => kind == ResourceKind.Hp ? "HP" : "MP";
+}
+
 internal sealed class WindowsChatEncoder : IChatEncoder
 {
     [DllImport("user32.dll")] private static extern IntPtr GetKeyboardLayout(uint threadId);

@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Drawing;
 using KOPunisher;
 
 internal static class Program
@@ -7,6 +8,14 @@ internal static class Program
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, Private)!.GetValue(target)!;
     private static object? Call(object target, string name, params object[] args) => target.GetType().GetMethod(name, Private)!.Invoke(target, args);
+    private static IEnumerable<Control> Desc(Control c)
+    {
+        foreach (Control child in c.Controls)
+        {
+            yield return child;
+            foreach (var nested in Desc(child)) yield return nested;
+        }
+    }
     private static void Check(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
@@ -24,13 +33,21 @@ internal static class Program
             {
                 try
                 {
+                    string screenshotDir = Path.Combine(Path.GetTempPath(), "ko-punisher-layout-" + Guid.NewGuid().ToString("N"));
+                    Directory.CreateDirectory(screenshotDir);
+                    void Shot(string name)
+                    {
+                        using var bitmap = new Bitmap(form.Width, form.Height);
+                        form.DrawToBitmap(bitmap, new Rectangle(Point.Empty, form.Size));
+                        bitmap.Save(Path.Combine(screenshotDir, name + ".png"));
+                    }
                     // Diskteki kullanıcı ayarlarını değiştirmeden gerçek UI bağlamasını sına.
                     var settings = new Settings { MinorPedalKey = "2", RunMode = RunMode.Toggle };
                     settings.Skills["Thrust"] = "F7";
                     settings.EnsureDefaultProfiles();
                     typeof(MainForm).GetField("_settings", Private)!.SetValue(form, settings);
                     Call(form, "ApplyToUi");
-                    foreach (string page in new[] { "assassin", "farm", "ocr", "diagnostics", "home", "assassin" })
+                    foreach (string page in new[] { "assassin", "farm", "settings", "upgrade", "assassin" })
                     {
                         Call(form, "ShowPage", page);
                         var current = (Settings)Call(form, "ReadUi")!;
@@ -56,7 +73,7 @@ internal static class Program
                     {
                         ("archery", "70-72", ClassType.Archer),
                         ("mage", "staff-r", ClassType.Mage),
-                        ("bp", "bp-rr", ClassType.BattlePriest),
+                        ("priest", "bp-rr", ClassType.BattlePriest),
                         ("assassin", "assassin-rr", ClassType.Assassin)
                     })
                     {
@@ -69,6 +86,7 @@ internal static class Program
                         var current = (Settings)Call(form, "ReadUi")!;
                         Check(current.ClassType == type && current.ComboPreset == preset, "Job/preset bağlaması");
                         Check(current.ComboKey1 == "F6" && (page != "assassin" || current.Skills["Spike"] == "3"), "Job tuşları ezdi");
+                        current.ActiveProfile = current.Profiles[0].Name;
                         current.SaveCurrentToProfile();
                         var restored = new Settings { Profiles = current.Profiles };
                         restored.ApplyProfile(current.ActiveProfile);
@@ -76,6 +94,47 @@ internal static class Program
                         Check(Field<Label>(form, "_comboGuide").Text.Length > 30, "Combo açıklaması eksik");
                     }
                     Console.WriteLine("PASS Dört job preset/özel tuş/profil bağlaması; okçu 3/5 atamalarını ezmez");
+                    Call(form, "ShowPage", "warrior");
+                    Call(form, "ShowJobTab", "yan");
+                    var supportPane = Field<Panel>(form, "_minorPane");
+                    Check(Desc(supportPane).OfType<Label>().Any(l => l.Text.Contains("Yan skill kataloğu")) &&
+                        !Desc(supportPane).OfType<Label>().Any(l => l.Text == "Minor"), "Warrior Yan Skiller generic Minor controls leaked");
+                    Call(form, "ShowPage", "assassin");
+                    Call(form, "ShowJobTab", "yan");
+                    Check(Desc(supportPane).Contains(keys["MinorTrigger"]) &&
+                        Desc(supportPane).OfType<Label>().Any(l => l.Text.Contains("Minor")), "Assassin Minor controls missing");
+                    Call(form, "ShowPage", "priest");
+                    Call(form, "ShowJobTab", "debuff");
+                    Check(Desc(supportPane).OfType<Label>().Any(l => l.Text.Contains("Priest debuff")) &&
+                        Desc(supportPane).OfType<Label>().Any(l => l.Text.Contains("Malice") || l.Text.Contains("Parasite")),
+                        "Priest Debuff category content missing");
+                    Check(!Desc(supportPane).OfType<Label>().Any(l => l.Text.Contains("Healing") ||
+                        l.Text.Contains("Restore") || l.Text is "Massive Binder" or "Massiveness" or "Collapse"),
+                        "Priest Debuff list leaked healing, buffs or attack skills through substring matching");
+                    Check(Desc(supportPane).OfType<Label>().Any(l => l.Text == "Massive"), "Massive debuff missing");
+                    Call(form, "ShowJobTab", "yan");
+                    Check(!Desc(supportPane).OfType<Label>().Any(l => l.Text is "Malice" or "Parasite" or "Massive"),
+                        "Priest Buff-Heal-Cure duplicated Debuff skills");
+                    Check(Desc(supportPane).OfType<Label>().Any(l => l.Text == "Cure Curse"), "Priest Cure skill missing");
+                    Call(form, "ShowPage", "archery");
+                    Call(form, "ShowJobTab", "diger");
+                    form.Show(); Application.DoEvents();
+                    var potionPane = Field<Panel>(form, "_digerPane");
+                    var regionButtons = Desc(potionPane).OfType<Button>().Where(b => b.Text.EndsWith("bölge çiz")).ToArray();
+                    Check(regionButtons.Length == 2 && regionButtons.All(b => b.Right <= b.Parent!.ClientSize.Width),
+                        "HP/MP region buttons clipped by persistent preview");
+                    Type previewType = typeof(MainForm).Assembly.GetType("KOPunisher.SkillLayoutPreviewControl")!;
+                    var bounds = previewType.GetMethod("SlotBounds", BindingFlags.Static | BindingFlags.NonPublic)!;
+                    for (int i = 0; i < 10; i++)
+                    {
+                        var r = (Rectangle)bounds.Invoke(null, new object[] { 220, i })!;
+                        Check(r.Left >= 0 && r.Right <= 220 && r.Height >= 28, "Preview slot clipped at min width");
+                    }
+                    Call(form, "ShowPage", "assassin"); Call(form, "ShowJobTab", "atak"); Shot("assassin-attack");
+                    Call(form, "ShowJobTab", "diger"); Shot("assassin-diger");
+                    Call(form, "ShowPage", "priest"); Call(form, "ShowJobTab", "debuff"); Shot("priest-debuff");
+                    Console.WriteLine("Layout screenshots: " + screenshotDir);
+                    Console.WriteLine("PASS Job category panes and fixed preview geometry");
                     Call(form, "ShowPage", "archery");
                     foreach (string preset in new[] { "3-5", "5-3", "3-5-w", "3-w-5-w", "70-72-60" })
                     {
@@ -117,14 +176,14 @@ internal static class Program
                         applied.ComboKey1 == "6" && applied.ComboKey2 == "5" && applied.SlideKey == "W", "Reference button bindings");
                     Check(ComboCatalog.SlideSteps(applied).SequenceEqual(new[] { ("5", 230, 230), ("W", 19, 19), ("6", 230, 230), ("W", 19, 0) }), "Reference button timings");
                     Console.WriteLine("PASS Independent archer timing UI bindings, reference button and zero-delay timeline");
-                    var jobs = new[] { ("archery", "3-w-5-w", "F6", 151), ("mage", "staff-r", "F7", 252), ("bp", "bp-rr", "F10", 353) };
+                    var jobs = new[] { ("archery", "3-w-5-w", "F6", 151), ("mage", "staff-r", "F7", 252), ("priest", "bp-rr", "F10", 353) };
                     foreach (var (page, preset, key, speed) in jobs)
                     {
                         Call(form, "ShowPage", page);
                         presets.SelectedItem = preset;
                         keys["ComboKey1"].Text = key;
                         nums["ComboSpeedMs"].Value = speed;
-                        Call(form, "ShowPage", "home");
+                        Call(form, "ShowPage", "settings");
                         Call(form, "ShowPage", page);
                         var draft = (Settings)Call(form, "ReadUiDraft", false)!;
                         Check(draft.ComboPreset == preset && draft.ComboKey1 == key && draft.ComboSpeedMs == speed, "Home navigation lost job edits");
@@ -133,7 +192,8 @@ internal static class Program
                     {
                         Call(form, "ShowPage", page);
                         var draft = (Settings)Call(form, "ReadUiDraft", false)!;
-                        Check(draft.ComboPreset == preset && draft.ComboKey1 == key && draft.ComboSpeedMs == speed, "Cross-job isolation failed");
+                        Check(draft.ComboPreset == preset && draft.ComboKey1 == key && draft.ComboSpeedMs == speed,
+                            $"Cross-job isolation failed {page}: {draft.ComboPreset}/{draft.ComboKey1}/{draft.ComboSpeedMs}");
                     }
                     Check(Field<Button>(form, "_singleCombo").Parent != null, "Single-cycle button missing");
                     Type overlayType = typeof(MainForm).Assembly.GetType("KOPunisher.RuntimeOverlay")!;
@@ -141,7 +201,7 @@ internal static class Program
                     var cp = (CreateParams)overlayType.GetProperty("CreateParams", Private)!.GetValue(overlay)!;
                     Check((cp.ExStyle & 0x08000020) == 0x08000020 && !overlay.ShowInTaskbar, "Overlay steals focus/clicks");
                     Check((bool)overlayType.GetProperty("ShowWithoutActivation", Private)!.GetValue(overlay)!, "Overlay activates on show");
-                    Console.WriteLine("PASS Job/home roundtrip and overlay nonactivation flags");
+                    Console.WriteLine("PASS Job/settings roundtrip and overlay nonactivation flags");
                     Call(form, "ShowPage", "farm");
                     Field<CheckBox[]>(form, "_buffEnabled")[0].Checked = true;
                     keys["BuffKey0"].Text = "0";
@@ -159,7 +219,7 @@ internal static class Program
                     Call(form, "ShowPage", "archery");
                     Check(!Field<CheckBox[]>(form, "_buffEnabled")[0].Checked && !Field<CheckBox>(form, "_monsterEnabled").Checked,
                         "Farm UI leaked across jobs");
-                    Call(form, "ShowPage", "bp");
+                    Call(form, "ShowPage", "priest");
                     Check(Field<CheckBox[]>(form, "_buffEnabled")[0].Checked && Field<TextBox>(form, "_marketMessages").Lines.Length == 2,
                         "Farm UI job restoration");
                     var busy = new TaskCompletionSource();
@@ -174,6 +234,32 @@ internal static class Program
                     Check(!invoked && typeof(MainForm).GetField("_engine", Private)!.GetValue(form) == null, "Busy market/test allowed another input lane");
                     busy.SetResult(); Call(form, "RefreshStatus");
                     Console.WriteLine("PASS Farm GUI bindings, job isolation and market/combo/test exclusion");
+                    var priestSettings = new Settings { ClassType = ClassType.Priest, ComboPreset = "rr" };
+                    priestSettings.EnsureDefaultProfiles();
+                    typeof(MainForm).GetField("_settings", Private)!.SetValue(form, priestSettings);
+                    Call(form, "ApplyToUi");
+                    Call(form, "ShowPage", "priest");
+                    presets.SelectedItem = "rr";
+                    keys["ComboKey1"].Text = "6";
+                    keys["HpPotionFallbackKey"].Text = "4";
+                    presets.SelectedItem = "bp-rr";
+                    keys["ComboKey1"].Text = "7";
+                    keys["HpPotionFallbackKey"].Text = "5";
+                    presets.SelectedItem = "rr";
+                    var priestDraft = (Settings)Call(form, "ReadUiDraft", false)!;
+                    Check(priestDraft.ClassType == ClassType.Priest && priestDraft.ComboKey1 == "6" &&
+                        priestDraft.HealthMana.Hp.FallbackKey == "4", "Priest mode draft not restored");
+                    presets.SelectedItem = "bp-rr";
+                    var bpDraft = (Settings)Call(form, "ReadUiDraft", false)!;
+                    Check(bpDraft.ClassType == ClassType.BattlePriest && bpDraft.ComboKey1 == "7" &&
+                        bpDraft.HealthMana.Hp.FallbackKey == "5", "Battle Priest mode draft not restored");
+                    Call(form, "ShowPage", "warrior");
+                    Call(form, "ShowPage", "priest");
+                    bpDraft = (Settings)Call(form, "ReadUiDraft", false)!;
+                    Check(bpDraft.ClassType == ClassType.BattlePriest && bpDraft.ComboPreset == "bp-rr" &&
+                        bpDraft.ComboKey1 == "7" && bpDraft.HealthMana.Hp.FallbackKey == "5",
+                        "Navigation rebuilt preset options and silently switched away from saved BP mode");
+                    Console.WriteLine("PASS Priest/BP mode drafts, potion keys and navigation restoration");
 
                 }
                 finally

@@ -10,10 +10,12 @@ public partial class MainForm : Form
     private MacroEngine? _engine;
     private readonly WindowsMacroInput _input = new();
     private readonly HotkeyManager _hotkeyManager = new();
-    private readonly SkillBarPanel _bar = new();
+
     private readonly Dictionary<string, TextBox> _keys = new();
     private readonly Dictionary<string, NumericUpDown> _nums = new();
     private readonly Dictionary<string, CheckBox> _checks = new();
+    private readonly Dictionary<ResourceKind, Label> _resourceRegionLabels = new();
+    private readonly Label _resourceStatus = new() { AutoSize = true, ForeColor = UiTheme.Gold };
     private readonly ComboBox _profiles = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150, Height = 24 };
     private readonly ComboBox _runMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
     private readonly ComboBox _preset = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 150 };
@@ -23,6 +25,7 @@ public partial class MainForm : Form
     private readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 26, Padding = new Padding(10, 4, 10, 4), ForeColor = UiTheme.Muted };
     private readonly Button _start = UiTheme.NavButton("Başlat");
     private readonly Button _stop = UiTheme.NavButton("Durdur");
+    private readonly SkillLayoutPreviewControl _skillPreview = new() { Dock = DockStyle.Right, Width = 220 };
     private readonly TrackBar _opacity = new()
     {
         Minimum = 30, Maximum = 100, Value = 100, Width = 110, Height = 24,
@@ -38,18 +41,9 @@ public partial class MainForm : Form
     private string? _shownError;
     private CancellationTokenSource? _probeStop;
     private Task _probeTask = Task.CompletedTask;
-    private Control? _homePage, _farmPage, _settingsPage, _ocrPage;
+    private Control? _farmPage, _settingsPage;
     private InventoryUpgradeControl? _upgradePage;
-    private Panel? _atakPane, _minorPane, _yanPane, _digerPane, _asasAtakExtra;
-    private FlowLayoutPanel? _palette;
-    private readonly Dictionary<string, Label> _ocrCoords = new();
-    private readonly ListBox _ocrLog = new()
-    {
-        Location = new Point(12, 210), Size = new Size(800, 280),
-        BackColor = UiTheme.Slot, ForeColor = UiTheme.Text, BorderStyle = BorderStyle.FixedSingle
-    };
-    private readonly TextBox _ocrPhrase = new() { Location = new Point(12, 108), Width = 130, Text = "casting failed" };
-
+    private Panel? _atakPane, _minorPane, _digerPane, _asasAtakExtra;
     private readonly string? _settingsPath;
 
     public MainForm(string? settingsPath = null)
@@ -64,11 +58,10 @@ public partial class MainForm : Form
         // sekmeler boş tuş/minimum zamanlama ile kayıtlı ayarları ezmemeli.
         EnsurePanes();
         _farmPage = FarmPage();
-        _ocrPage = OcrPage();
         _preset.FormattingEnabled = true;
         _preset.DropDownWidth = 340;
         _preset.Format += (_, e) => e.Value = ComboTitle(e.ListItem as string ?? "");
-        _preset.SelectedIndexChanged += (_, _) => UpdateComboPanels();
+        _preset.SelectedIndexChanged += (_, _) => OnPresetChanged();
         HandleCreated += (_, _) =>
         {
             _hotkeyManager.SetWindowHandle(Handle);
@@ -90,7 +83,7 @@ public partial class MainForm : Form
         _status.Text = loadError ?? "Başlat → oyunu tıkla → tetik. Formu tıklama.";
         _timer.Tick += (_, _) => RefreshStatus();
         _timer.Start();
-        ShowPage("home");
+        ShowPage("warrior");
         ApplyToUi();
         InitializeComboHelp();
         UpdateComboPreview();
@@ -106,10 +99,10 @@ public partial class MainForm : Form
     {
         Text = "KO-Punisher";
         UiTheme.PaintDark(this);
-        ClientSize = new Size(1024, 620);
-        MinimumSize = new Size(1024, 620);
-        MaximumSize = new Size(1024, 620);
         FormBorderStyle = FormBorderStyle.FixedSingle;
+        ClientSize = new Size(1244, 720);
+        MinimumSize = Size;
+        MaximumSize = Size;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         TopMost = true;
@@ -162,9 +155,9 @@ public partial class MainForm : Form
         };
         foreach (var (label, id) in new[]
         {
-            ("Anasayfa", "home"), ("Assassin", "assassin"), ("Archery", "archery"),
-            ("Warrior", "warrior"), ("Priest", "priest"), ("Mage / Restore", "mage"),
-            ("Battle Priest", "bp"), ("Farm", "farm"), ("Upgrade", "upgrade"), ("OCR", "ocr"), ("Ayarlar", "settings"), ("Tanılama", "diagnostics")
+            ("Warrior", "warrior"), ("Assassin", "assassin"), ("Archery", "archery"),
+            ("Mage", "mage"), ("Priest", "priest"), ("Farm", "farm"),
+            ("Upgrade", "upgrade"), ("Ayarlar", "settings")
         })
         {
             var b = UiTheme.SideButton(label);
@@ -197,16 +190,21 @@ public partial class MainForm : Form
         if (_upgradePage?.Busy == true || _skillLayoutEditor?.Busy == true) return;
         if (page == "upgrade" && (_engine?.IsArmed == true || !_probeTask.IsCompleted)) return;
         if ((_engine?.IsArmed == true || !_probeTask.IsCompleted) &&
-            page is "assassin" or "archery" or "warrior" or "priest" or "mage" or "bp")
+            page is "assassin" or "archery" or "warrior" or "priest" or "mage")
         {
             _status.Text = "Job değiştirmeden önce Durdur.";
             return;
         }
         if (!_applying && _preset.Items.Count > 0 && _engine?.IsArmed != true && _probeTask.IsCompleted)
             _settings = ReadUiDraft();
-        if (_settings.ClassType != JobForPage(page) && JobForPage(page) != null)
+        ClassType? requestedJob = JobForPage(page);
+        if (page == "priest" && _settings.ClassType != ClassType.Priest && _settings.ClassType != ClassType.BattlePriest &&
+            _settings.JobDrafts.ContainsKey(_settings.ActiveProfile + ":" + ClassType.BattlePriest))
+            requestedJob = ClassType.BattlePriest;
+        bool samePriestSurface = page == "priest" && _settings.ClassType == ClassType.BattlePriest;
+        if (_settings.ClassType != requestedJob && requestedJob != null && !samePriestSurface)
         {
-            _settings.SwitchJob(JobForPage(page)!.Value);
+            _settings.SwitchJob(requestedJob.Value);
             try { _settings.SaveJobDrafts(_settingsPath); }
             catch (Exception ex) { _status.Text = "Job taslağı kaydedilemedi: " + ex.Message; }
             ApplyToUi();
@@ -216,14 +214,11 @@ public partial class MainForm : Form
         _content.Controls.Clear();
         Control body = page switch
         {
-            "home" => _homePage ??= HomePage(),
             "farm" => _farmPage ??= FarmPage(),
-            "ocr" => _ocrPage ??= OcrPage(),
             "upgrade" => _upgradePage ??= new InventoryUpgradeControl(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KO-Punisher", "inventory-crop.json"), () => _settings.TargetProcess), 
             "settings" => _settingsPage ??= SettingsPage(),
-            "diagnostics" => _diagnosticsPage ??= DiagnosticsPage(),
-            "assassin" or "archery" or "warrior" or "priest" or "mage" or "bp" => JobPageFor(page),
+            "assassin" or "archery" or "warrior" or "priest" or "mage" => JobPageFor(page),
             _ => CompactHint(page)
         };
         body.Dock = DockStyle.Fill;
@@ -232,7 +227,7 @@ public partial class MainForm : Form
 
     private void HighlightSide(string page)
     {
-        string[] ids = ["home", "assassin", "archery", "warrior", "priest", "mage", "bp", "farm", "upgrade", "ocr", "settings", "diagnostics"];
+        string[] ids = ["warrior", "assassin", "archery", "mage", "priest", "farm", "upgrade", "settings"];
         for (int i = 0; i < _sideButtons.Count && i < ids.Length; i++)
         {
             bool on = ids[i] == page;
@@ -247,16 +242,16 @@ public partial class MainForm : Form
         {
             "archery" => ClassType.Archer,
             "warrior" => ClassType.Warrior,
-            "priest" => ClassType.Priest,
+            "priest" => _settings.ClassType == ClassType.BattlePriest ? ClassType.BattlePriest : ClassType.Priest,
             "mage" => ClassType.Mage,
-            "bp" => ClassType.BattlePriest,
             _ => ClassType.Assassin
         };
         _settings.ClassType = job;
         FillPresetItems(page);
         RebuildJobChrome(page);
-        FillPalette(page);
+
         _skillLayoutEditor!.LoadLayout(job, _settings.SkillLayout);
+        RefreshSkillPreview();
         UpdateComboPanels();
         _jobTab = TabId(TabsFor(page)[0]);
         ShowJobTab(_jobTab);
@@ -271,23 +266,51 @@ public partial class MainForm : Form
         UpdateComboGuide();
     }
 
+    private void OnPresetChanged()
+    {
+        if (!_applying && _page == "priest")
+        {
+            bool wantBp = (_preset.SelectedItem as string) == "bp-rr";
+            bool isBp = _settings.ClassType == ClassType.BattlePriest;
+            if (wantBp != isBp && _engine?.IsArmed != true && _probeTask.IsCompleted)
+            {
+                try
+                {
+                    var outgoing = ReadUiDraft(validate: false);
+                    outgoing.ClassType = _settings.ClassType;
+                    outgoing.ComboPreset = _settings.ComboPreset;
+                    outgoing.StoreJobDraft();
+                    outgoing.SwitchJob(wantBp ? ClassType.BattlePriest : ClassType.Priest);
+                    _settings = outgoing;
+                    _applying = true;
+                    try
+                    {
+                        FillPresetItems("priest");
+                        _skillLayoutEditor?.LoadLayout(_settings.ClassType, _settings.SkillLayout);
+                        RefreshSkillPreview();
+                        ApplyToUi();
+                    }
+                    finally { _applying = false; }
+                }
+                catch (Exception ex) { _status.Text = "Priest/BP modu değiştirilemedi: " + ex.Message; }
+            }
+        }
+        UpdateComboPanels();
+    }
+
     private static string[] TabsFor(string page) => page switch
     {
-        "assassin" => ["Atak", "Minor", "Yan Skiller", "Diğer"],
-        "archery" => ["Kombo", "Minor", "Diğer"],
-        "warrior" => ["Atak", "Minor", "Diğer"],
-        "priest" => ["Atak", "HP/MP", "Diğer"],
-        "mage" => ["Atak", "Minor", "Diğer"],
-        "bp" => ["Atak", "Heal", "Diğer"],
+        "priest" => ["Attack", "Buff-Heal-Cure", "Debuff", "Diğer"],
+        "assassin" or "archery" or "warrior" or "mage" => ["Attack", "Yan Skiller", "Diğer"],
         _ => ["Atak", "Diğer"]
     };
 
     private static string TabId(string name) => name switch
     {
-        "Yan Skiller" or "Skill bar" => "yan",
-        "HP/MP" => "hp",
-        "Heal" => "minor",
-        "Kombo" => "atak",
+        "Yan Skiller" or "Buff-Heal-Cure" => "yan",
+        "Debuff" => "debuff",
+        "Skill Bar" => "skillbar",
+        "Attack" or "Kombo" => "atak",
         _ => name.ToLowerInvariant()
     };
 
@@ -298,8 +321,7 @@ public partial class MainForm : Form
         {
             "archery" => [ComboCatalog.FiveSlideThreeSlide, ComboCatalog.ThreeSlideFiveSlide, "5-3", "3-5", "70-72", "70-60", "70-72-60"],
             "mage" => ["staff-r", "rr", "r"],
-            "bp" => ["bp-rr", "r"],
-            "priest" => ["rr", "r"],
+            "priest" => ["rr", "r", "bp-rr"],
             "warrior" => ["rotation", "rr"],
             _ => ["rotation", "assassin-skill-r", "assassin-rr", "assassin-r-skill"]
         };
@@ -325,8 +347,9 @@ public partial class MainForm : Form
             b.Click += (_, _) => ShowJobTab(id);
             tabs.Controls.Add(b);
         }
+        var shell = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg };
         var body = new Panel { Dock = DockStyle.Fill, BackColor = UiTheme.Bg };
-        foreach (var pane in new[] { _atakPane!, _minorPane!, _yanPane!, _digerPane! })
+        foreach (var pane in new[] { _atakPane!, _minorPane!, _digerPane! })
         {
             pane.Parent = null;
             pane.Dock = DockStyle.Fill;
@@ -336,26 +359,32 @@ public partial class MainForm : Form
         _skillLayoutEditor!.Parent = null;
         _skillLayoutEditor.Dock = DockStyle.Fill;
         body.Controls.Add(_skillLayoutEditor);
-        _jobHost.Controls.Add(body);
+        _skillPreview.Parent = null;
+        _skillPreview.Dock = DockStyle.Right;
+        shell.Controls.Add(body);
+        shell.Controls.Add(_skillPreview);
+        _jobHost.Controls.Add(shell);
         _jobHost.Controls.Add(tabs);
+        RefreshSkillPreview();
     }
 
     private void EnsurePanes()
     {
         _atakPane ??= AtakPane();
         _minorPane ??= MinorPane();
-        _yanPane ??= YanPane();
+
         _digerPane ??= DigerPane();
     }
 
     private void ShowJobTab(string tab)
     {
         _jobTab = tab;
-        if (_skillLayoutEditor != null) _skillLayoutEditor.Visible = tab == "skill bar";
+        if (_skillLayoutEditor != null) _skillLayoutEditor.Visible = tab == "skillbar";
         if (_atakPane == null) return;
+        if (tab is "yan" or "debuff") RenderSupportPane(tab);
         _atakPane.Visible = tab is "atak";
-        _minorPane!.Visible = tab is "minor" or "hp";
-        _yanPane!.Visible = tab == "yan";
+        _minorPane!.Visible = tab is "minor" or "hp" or "yan" or "debuff";
+
         _digerPane!.Visible = tab is "diğer" or "diger";
     }
 
@@ -407,49 +436,66 @@ public partial class MainForm : Form
 
     private Panel MinorPane()
     {
-        var p = new Panel { BackColor = UiTheme.Bg };
-        Add(p, Lbl("Tetik", 12, 10));
-        Add(p, KeyBox("MinorTrigger", 12, 26));
-        Add(p, Lbl("Minor tuş", 150, 10));
-        Add(p, KeyBox("MinorPedalKey", 150, 26));
-        Add(p, Lbl("Hold ms", 288, 10));
-        Add(p, Num("MinorHoldMs", 288, 26, 5, 1000));
-        Add(p, Lbl("Tekrar ms", 430, 10));
-        Add(p, Num("MinorRepeatMs", 430, 26, 10, 5000));
-        Add(p, Lbl("Pot", 12, 64));
-        Add(p, KeyBox("MinorPotKey", 12, 80));
-        Add(p, Lbl("Mana", 150, 64));
-        Add(p, KeyBox("MinorManaKey", 150, 80));
-        Add(p, Lbl("Acil", 288, 64));
-        Add(p, KeyBox("EmergencyStop", 288, 80));
-        return p;
+        return new Panel { BackColor = UiTheme.Bg, AutoScroll = true };
     }
 
-    private Panel YanPane()
+    private void RenderSupportPane(string tab)
     {
-        var p = new Panel { BackColor = UiTheme.Bg };
-        _palette = new FlowLayoutPanel
+        var p = _minorPane!;
+        p.SuspendLayout();
+        try
         {
-            Location = new Point(8, 8), Size = new Size(820, 130),
-            BackColor = UiTheme.PanelAlt, WrapContents = true
-        };
-        _bar.Location = new Point(8, 144);
-        _bar.Width = 820;
-        p.Controls.Add(_palette);
-        p.Controls.Add(_bar);
-        return p;
+            p.Controls.Clear();
+            int y = 12;
+            ClassType job = _settings.ClassType == ClassType.BattlePriest ? ClassType.Priest : _settings.ClassType;
+            if (tab == "yan" && _settings.ClassType is ClassType.Assassin or ClassType.Archer)
+            {
+                Add(p, Lbl("Minor", 12, y));
+                Add(p, Lbl("Tetik", 12, y + 24));
+                Add(p, KeyBox("MinorTrigger", 12, y + 40));
+                Add(p, Lbl("Minor tuş", 150, y + 24));
+                Add(p, KeyBox("MinorPedalKey", 150, y + 40));
+                Add(p, Lbl("Hold ms", 288, y + 24));
+                Add(p, Num("MinorHoldMs", 288, y + 40, 5, 1000));
+                Add(p, Lbl("Tekrar ms", 430, y + 24));
+                Add(p, Num("MinorRepeatMs", 430, y + 40, 10, 5000));
+                y += 88;
+            }
+            IEnumerable<JobSkillDef> skills = JobSkillCatalog.ForJob(job);
+            if (tab == "debuff")
+                skills = skills.Where(IsPriestDebuff);
+            else if (job is ClassType.Priest or ClassType.BattlePriest)
+                skills = skills.Where(s => s.Category is "Buff" or "Heal" ||
+                    s.Id is "Priest_CureCurse" or "Priest_CureDisease");
+            else
+                skills = skills.Where(s => s.Category is "Buff" or "Heal" or "Utility" &&
+                    !s.Id.StartsWith("Consumable_", StringComparison.Ordinal));
+            string title = tab == "debuff" ? "Priest debuff kataloğu" :
+                job is ClassType.Priest or ClassType.BattlePriest ? "Buff-Heal-Cure kataloğu" : "Yan skill kataloğu";
+            Add(p, Lbl(title, 12, y));
+            y += 24;
+            foreach (var skill in skills.OrderBy(s => s.Category).ThenBy(s => s.Name))
+            {
+                var row = new Panel { Location = new Point(12, y), Size = new Size(560, 28), BackColor = UiTheme.Panel };
+                row.Controls.Add(new Label { Text = tab == "debuff" ? "Debuff" : skill.Category, Location = new Point(6, 6), Width = 64, ForeColor = UiTheme.Gold });
+                row.Controls.Add(new Label { Text = skill.Name, Location = new Point(76, 6), Width = 250, ForeColor = UiTheme.Text });
+                string address = _settings.SkillLayout?.Resolve(skill.Id)?.ToString() ?? "Skill Bar'da yok";
+                row.Controls.Add(new Label { Text = address, Location = new Point(340, 6), Width = 190, ForeColor = UiTheme.Muted });
+                p.Controls.Add(row);
+                y += 32;
+            }
+            if (y == 36)
+                Add(p, Lbl("Bu job/sekme için katalog girdisi yok.", 12, y));
+        }
+        finally { p.ResumeLayout(true); }
     }
 
-    private void FillPalette(string page)
-    {
-        EnsurePanes();
-        var catalog = page == "archery" ? SkillCatalog.Archer : SkillCatalog.Assassin;
-        _bar.ActiveCatalog = catalog;
-        if (_palette == null) return;
-        _palette.Controls.Clear();
-        foreach (var skill in catalog)
-            _palette.Controls.Add(new SkillIconTile(skill));
-    }
+    // Açık kimlikler: "Massive" eşleşmesi heal/buff adlarını Debuff'a taşımamalı.
+    private static bool IsPriestDebuff(JobSkillDef skill) => skill.Id is
+        "Priest_Malice" or "Priest_Confusion" or "Priest_Slow" or "Priest_ReverseLife" or
+        "Priest_SleepWing" or "Priest_Parasite" or "Priest_SleepCarpet" or "Priest_Torment" or
+        "Priest_Massive" or "Priest_Subside" or "Priest_SuperiorParasite" or
+        "Priest_ClearMana" or "Priest_SweepMana";
 
     private Panel DigerPane()
     {
@@ -470,175 +516,71 @@ public partial class MainForm : Form
         Add(p, _jitter);
         Add(p, Lbl("Jitter ms", 400, 64));
         Add(p, Num("JitterRange", 400, 80, 0, 50));
+        Add(p, Lbl("Acil durdur", 520, 64));
+        Add(p, KeyBox("EmergencyStop", 520, 80));
+        AddPotionControls(p, 10, 138);
         AddArcherTimingControls(p);
         return p;
     }
 
-    private Control HomePage()
+    private void AddPotionControls(Control p, int x, int y)
     {
-        var p = new Panel { BackColor = UiTheme.Bg };
-        var art = new PictureBox
-        {
-            Dock = DockStyle.Right, Width = 280, SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = UiTheme.Bg, Image = AppAssets.HomeArt
-        };
-        var left = new Panel { Dock = DockStyle.Fill };
-        if (AppAssets.Logo != null)
-        {
-            left.Controls.Add(new PictureBox
-            {
-                Image = AppAssets.Logo, Location = new Point(16, 12), Size = new Size(240, 160),
-                SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Transparent
-            });
-        }
-        left.Controls.Add(new Label
-        {
-            Text = "Soldan job seç. Atak sekmesinde tetik ve kombo.\nBaşlat, oyunu tıkla, tetik bas. Formu tıklama.",
-            Location = new Point(16, 180), AutoSize = true, ForeColor = UiTheme.Muted
-        });
-        p.Controls.Add(left);
-        p.Controls.Add(art);
-        return p;
+        Add(p, Lbl("Otomatik HP/MP pot", x, y));
+        _resourceStatus.Location = new Point(x + 150, y);
+        Add(p, _resourceStatus);
+        AddPotionLaneControls(p, ResourceKind.Hp, "HP", x, y + 28);
+        AddPotionLaneControls(p, ResourceKind.Mp, "MP", x, y + 112);
     }
 
-    private Control OcrPage()
+    private void AddPotionLaneControls(Control p, ResourceKind kind, string label, int x, int y)
     {
-        var p = new Panel { BackColor = UiTheme.Bg };
-        Add(p, Lbl("Kırp: Skill Bar, Chat, HP/MP, Status. Casting failed Status’te aranır. Oyun belleği okunmaz.", 12, 8));
-        int x = 12;
-        foreach (var (name, getter) in new (string, Func<UiRegion>)[]
-        {
-            ("SkillBar", () => _settings.OcrSkillBar),
-            ("Chat", () => _settings.OcrChat),
-            ("HpMp", () => _settings.OcrHpMp),
-            ("Status", () => _settings.OcrStatus)
-        })
-        {
-            var b = UiTheme.NavButton(name + " çiz");
-            b.Location = new Point(x, 32);
-            string id = name;
-            b.Click += (_, _) => PickOcr(id);
-            p.Controls.Add(b);
-            var lab = new Label { Location = new Point(x, 66), AutoSize = true, ForeColor = UiTheme.Muted, Text = getter().ToString() };
-            _ocrCoords[id] = lab;
-            p.Controls.Add(lab);
-            x += 160;
-        }
-        Add(p, Lbl("Fail metni", 12, 92));
-        UiTheme.StyleField(_ocrPhrase);
-        p.Controls.Add(_ocrPhrase);
-        Add(p, Lbl("Tur", 150, 92));
-        Add(p, Num("OcrTestCycles", 150, 108, 1, 10));
-        var go = UiTheme.NavButton("2 sn sonra 3-5-W dene");
-        go.Location = new Point(250, 106);
-        go.Click += async (_, _) => await RunOcrProbeAsync();
-        p.Controls.Add(go);
-        Add(p, Lbl("Oyunu tıkla, countdown bitince 5→W→3→W basılır; Status OCR damgalanır.", 12, 144));
-        p.Controls.Add(_ocrLog);
-        return p;
+        string prefix = kind == ResourceKind.Hp ? "HpPotion" : "MpPotion";
+        Add(p, Chk(prefix + "Enabled", label + " açık", x, y));
+        Add(p, Lbl("Eşik %", x + 100, y - 2));
+        Add(p, Num(prefix + "Threshold", x + 100, y + 14, 1, 99));
+        Add(p, Lbl("Fallback tuş", x + 200, y - 2));
+        Add(p, KeyBox(prefix + "FallbackKey", x + 200, y + 14));
+        Add(p, Lbl("Cooldown ms", x + 330, y - 2));
+        Add(p, Num(prefix + "CooldownMs", x + 330, y + 14, 250, 30000));
+        Add(p, Lbl("Okuma ms", x + 450, y - 2));
+        Add(p, Num(prefix + "ReadIntervalMs", x + 450, y + 14, 100, 5000));
+        var pick = UiTheme.NavButton(label + " bölge çiz");
+        pick.Location = new Point(x, y + 42);
+        pick.Click += async (_, _) => await PickResourceRegionAsync(kind);
+        Add(p, pick);
+        var region = new Label { Location = new Point(x + 120, y + 48), Width = 460, AutoEllipsis = true, ForeColor = UiTheme.Muted };
+        _resourceRegionLabels[kind] = region;
+        Add(p, region);
     }
 
-    private void PickOcr(string id)
-    {
-        using var overlay = new OcrOverlay();
-        if (overlay.ShowDialog(this) != DialogResult.OK) return;
-        var r = overlay.ScreenRect;
-        UiRegion box = id switch
-        {
-            "SkillBar" => _settings.OcrSkillBar,
-            "Chat" => _settings.OcrChat,
-            "HpMp" => _settings.OcrHpMp,
-            _ => _settings.OcrStatus
-        };
-        box.X = r.X; box.Y = r.Y; box.W = r.Width; box.H = r.Height;
-        if (_ocrCoords.TryGetValue(id, out var lab)) lab.Text = box.ToString();
-        _status.Text = id + " kırpıldı: " + box;
-    }
 
-    private async Task RunOcrProbeAsync()
+    private async Task PickResourceRegionAsync(ResourceKind kind)
     {
-        if (_closing || !_probeTask.IsCompleted || _engine?.IsArmed == true) return;
-        using var stop = new CancellationTokenSource();
-        _probeStop = stop;
+        if (_engine?.IsArmed == true || !_probeTask.IsCompleted) { _status.Text = "Bölge çizmeden önce Durdur."; return; }
         try
         {
-            _probeTask = RunOcrProbeCoreAsync(stop.Token);
-            await _probeTask;
+            Hide();
+            await Task.Delay(250);
+            IntPtr window = GameWindow.RequireForeground(_settings.TargetProcess);
+            Rectangle bounds = GameWindow.ClientBounds(window);
+            var desktop = SystemInformation.VirtualScreen;
+            using var screen = new Bitmap(desktop.Width, desktop.Height);
+            using (var graphics = Graphics.FromImage(screen))
+                graphics.CopyFromScreen(desktop.Location, Point.Empty, desktop.Size);
+            using var crop = new InventoryCropForm(screen, desktop,
+                $"{(kind == ResourceKind.Hp ? "HP" : "MP")} yüzde veya current/max yazısını seç · ESC: iptal");
+            if (crop.ShowDialog() != DialogResult.OK) return;
+            Rectangle r = crop.SelectedBounds;
+            if (!bounds.Contains(r)) { _status.Text = "Seçim oyun istemci alanının içinde olmalı."; return; }
+            var lane = kind == ResourceKind.Hp ? _settings.HealthMana.Hp : _settings.HealthMana.Mp;
+            lane.Region = new UiRegion { X = r.X - bounds.X, Y = r.Y - bounds.Y, W = r.Width, H = r.Height };
+            lane.ClientWidth = bounds.Width;
+            lane.ClientHeight = bounds.Height;
+            UpdateResourceRegionLabels();
+            _status.Text = $"{(kind == ResourceKind.Hp ? "HP" : "MP")} bölgesi kalibre edildi: {lane.Region}";
         }
-        catch (OperationCanceledException) when (stop.IsCancellationRequested)
-        { _status.Text = "OCR testi durduruldu."; }
-        catch (Exception ex) { _status.Text = "OCR testi başarısız: " + ex.Message; }
-        finally
-        {
-            _probeStop = null;
-            try { InputSender.CleanupAllKeys(); }
-            catch (Exception ex) { _status.Text = "Tuş bırakma hatası: " + ex.Message; }
-        }
-    }
-
-    private async Task RunOcrProbeCoreAsync(CancellationToken token)
-    {
-        if (!_settings.OcrStatus.IsSet)
-        {
-            _status.Text = "Önce Status alanını çiz.";
-            return;
-        }
-        _ocrLog.Items.Clear();
-        try { _settings = ReadUi(); }
-        catch (Exception ex)
-        {
-            _status.Text = "OCR testi başlatılamadı: " + ex.Message;
-            return;
-        }
-        for (int i = 2; i >= 1; i--)
-        {
-            _status.Text = $"OCR test {i} sn — oyunu tıkla, formu tıklama.";
-            await Task.Delay(1000, token);
-        }
-        if (!ComboCatalog.IsSlide(_settings.ComboPreset))
-            throw new InvalidOperationException("OCR combo testi için hareketli okçu combosunu seç.");
-        var steps = ComboCatalog.SlideSteps(_settings);
-        var status = new Rectangle(_settings.OcrStatus.X, _settings.OcrStatus.Y, _settings.OcrStatus.W, _settings.OcrStatus.H);
-        string phrase = _settings.OcrFailPhrase;
-        int fails = 0;
-        for (int c = 1; c <= _settings.OcrTestCycles; c++)
-        {
-            LogOcr($"--- tur {c} · {ComboTitle(_settings.ComboPreset)} ---");
-            foreach (var (key, h, after) in steps)
-            {
-                long t = Environment.TickCount64;
-                try
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (!_input.IsTargetForeground(_settings.TargetProcess)) throw new InvalidOperationException("Oyun odağı kayboldu; OCR testi iptal edildi.");
-                    InputSender.KeyDown(key);
-                    await WaitForGameAsync(h, token);
-                }
-                finally { InputSender.KeyUp(key); }
-                LogOcr($"{t} KEY {key} hold={h}");
-                await WaitForGameAsync(after, token);
-            }
-            // OCR tur arasına gecikme ekler; sürekli combo zamanlaması testi değildir.
-            string text = await OcrReader.ReadAsync(status, token);
-            token.ThrowIfCancellationRequested();
-            if (OcrReader.LooksFailed(text, phrase)) fails++;
-            LogOcr($"Tur {c} OCR: {TrimOcr(text)} (tur arası OCR beklemesi var)");
-        }
-        _status.Text = fails == 0
-            ? "OCR test: hata metni görülmedi; oyun kabulü doğrulanmadı."
-            : $"OCR test: {fails} turda hata metni görüldü; bu sayı ayrı hata sayısı değildir.";
-    }
-
-    private void LogOcr(string line)
-    {
-        _ocrLog.Items.Add(line);
-        _ocrLog.TopIndex = Math.Max(0, _ocrLog.Items.Count - 1);
-    }
-
-    private static string TrimOcr(string t)
-    {
-        t = (t ?? "").Replace('\n', ' ').Trim();
-        return t.Length <= 80 ? t : t[..80];
+        catch (Exception ex) { _status.Text = "Bölge çizilemedi: " + ex.Message; }
+        finally { if (!IsDisposed) { Show(); Activate(); } }
     }
 
     private Control FarmPage()
@@ -657,10 +599,17 @@ public partial class MainForm : Form
 
     private Control SettingsPage()
     {
-        var p = new Panel { BackColor = UiTheme.Bg };
-        Add(p, Lbl(Settings.FilePath, 12, 12));
-        Add(p, Lbl("HP eşiği oyun belleğinden okunmaz. Pot/mana tuşu + HP zorla tetik kullan.", 12, 36));
-        Add(p, Lbl("Üst çubuktaki Şeffaf kaydırıcı pencere opaklığını ayarlar (30–100%).", 12, 60));
+        var p = new TabControl { Dock = DockStyle.Fill };
+        var general = new TabPage("Genel") { BackColor = UiTheme.Bg };
+        Add(general, Lbl(Settings.FilePath, 12, 12));
+        Add(general, Lbl("HP/MP pot okumaları yalnız kalibre edilen ekran bölgesinden OCR ile yapılır; okunamayan değer sıfır sayılmaz.", 12, 36));
+        Add(general, Lbl("Üst çubuktaki Şeffaf kaydırıcı pencere opaklığını ayarlar (30-100%).", 12, 60));
+        var diagnostics = new TabPage("Tanılama") { BackColor = UiTheme.Bg };
+        var diag = DiagnosticsPage();
+        diag.Dock = DockStyle.Fill;
+        diagnostics.Controls.Add(diag);
+        p.TabPages.Add(general);
+        p.TabPages.Add(diagnostics);
         return p;
     }
 
@@ -790,8 +739,7 @@ public partial class MainForm : Form
             SetNum("JitterRange", _settings.JitterRange);
             SetNum("ZInterval", _settings.ZInterval);
             SetNum("ComboSpeedMs", _settings.ComboSpeedMs);
-            _ocrPhrase.Text = _settings.OcrFailPhrase;
-            SetNum("OcrTestCycles", _settings.OcrTestCycles);
+            SetPotionUi();
             int op = Math.Clamp(_settings.WindowOpacity, 30, 100);
             _opacity.Value = op;
             Opacity = op / 100.0;
@@ -808,10 +756,43 @@ public partial class MainForm : Form
             if (_checks.TryGetValue("WsCombo", out var ws))
                 ws.Checked = _settings.SkillRSkillMode == SkillRSkillMode.None;
             ApplyFarmToUi();
-            _bar.LoadFrom(_settings);
+
             _skillLayoutEditor?.LoadLayout(_settings.ClassType, _settings.SkillLayout);
+            RefreshSkillPreview();
         }
         finally { _applying = false; }
+    }
+
+    private void SetPotionUi()
+    {
+        _settings.HealthMana ??= new();
+        _settings.HealthMana.Normalize();
+        SetCheck("HpPotionEnabled", _settings.HealthMana.Hp.Enabled);
+        SetCheck("MpPotionEnabled", _settings.HealthMana.Mp.Enabled);
+        SetNum("HpPotionThreshold", _settings.HealthMana.Hp.ThresholdPercent);
+        SetNum("MpPotionThreshold", _settings.HealthMana.Mp.ThresholdPercent);
+        SetKey("HpPotionFallbackKey", _settings.HealthMana.Hp.FallbackKey);
+        SetKey("MpPotionFallbackKey", _settings.HealthMana.Mp.FallbackKey);
+        SetNum("HpPotionCooldownMs", _settings.HealthMana.Hp.CooldownMs);
+        SetNum("MpPotionCooldownMs", _settings.HealthMana.Mp.CooldownMs);
+        SetNum("HpPotionReadIntervalMs", _settings.HealthMana.Hp.ReadIntervalMs);
+        SetNum("MpPotionReadIntervalMs", _settings.HealthMana.Mp.ReadIntervalMs);
+        UpdateResourceRegionLabels();
+    }
+
+    private void SetCheck(string n, bool value)
+    {
+        if (_checks.TryGetValue(n, out var c)) c.Checked = value;
+    }
+
+    private void UpdateResourceRegionLabels()
+    {
+        _settings.HealthMana ??= new();
+        foreach (var (kind, label) in _resourceRegionLabels)
+        {
+            var lane = kind == ResourceKind.Hp ? _settings.HealthMana.Hp : _settings.HealthMana.Mp;
+            label.Text = $"{(kind == ResourceKind.Hp ? "HP" : "MP")} bölge: {lane.Region}";
+        }
     }
 
     private void SetKey(string n, string v)
@@ -858,8 +839,8 @@ public partial class MainForm : Form
             OcrChat = _settings.OcrChat,
             OcrHpMp = _settings.OcrHpMp,
             OcrStatus = _settings.OcrStatus,
-            OcrFailPhrase = string.IsNullOrWhiteSpace(_ocrPhrase.Text) ? _settings.OcrFailPhrase : _ocrPhrase.Text,
-            OcrTestCycles = Fallback("OcrTestCycles", _settings.OcrTestCycles),
+            OcrFailPhrase = _settings.OcrFailPhrase,
+            OcrTestCycles = _settings.OcrTestCycles,
             ClassType = _settings.ClassType,
             SkillLayout = _settings.SkillLayout?.Clone(),
             MinorHoldMs = NumVal("MinorHoldMs") is 0 ? _settings.MinorHoldMs : NumVal("MinorHoldMs"),
@@ -892,6 +873,7 @@ public partial class MainForm : Form
                 ? SkillRSkillMode.SkillR : SkillRSkillMode.None,
             TargetProcess = _settings.TargetProcess,
             Farm = ReadFarmUi(),
+            HealthMana = ReadHealthManaUi(),
             JobDrafts = Settings.Snapshot(_settings.JobDrafts),
             Profiles = _settings.Profiles,
             ActiveProfile = _settings.ActiveProfile,
@@ -902,6 +884,8 @@ public partial class MainForm : Form
         };
         if (string.IsNullOrWhiteSpace(s.ComboTrigger)) s.ComboTrigger = _settings.ComboTrigger;
         if (string.IsNullOrWhiteSpace(s.MinorTrigger)) s.MinorTrigger = _settings.MinorTrigger;
+        if (_page == "priest")
+            s.ClassType = s.ComboPreset == "bp-rr" ? ClassType.BattlePriest : ClassType.Priest;
         if (_page == "archery")
             s.ComboPreset = (_preset.SelectedItem as string) ?? ComboCatalog.FiveSlideThreeSlide;
         bool archer35 = s.ComboPreset is ComboCatalog.FiveSlideThreeSlide or "3-5-w-3-5-w";
@@ -910,11 +894,26 @@ public partial class MainForm : Form
             s.ExclusiveBind("ArrowShower", "5");
             s.ExclusiveBind("MultipleShot", "3");
         }
-        else
-            _bar.ApplyTo(s);
         SkillCalibration.Apply(s, requireComplete: validate);
         if (validate) s.Validate();
         return s;
+    }
+
+    private HealthManaSettings ReadHealthManaUi()
+    {
+        var copy = Settings.Snapshot(_settings.HealthMana ?? new HealthManaSettings());
+        copy.Hp.Enabled = _checks.TryGetValue("HpPotionEnabled", out var hp) && hp.Checked;
+        copy.Mp.Enabled = _checks.TryGetValue("MpPotionEnabled", out var mp) && mp.Checked;
+        copy.Hp.ThresholdPercent = Fallback("HpPotionThreshold", copy.Hp.ThresholdPercent);
+        copy.Mp.ThresholdPercent = Fallback("MpPotionThreshold", copy.Mp.ThresholdPercent);
+        copy.Hp.FallbackKey = K("HpPotionFallbackKey", copy.Hp.FallbackKey);
+        copy.Mp.FallbackKey = K("MpPotionFallbackKey", copy.Mp.FallbackKey);
+        copy.Hp.CooldownMs = Fallback("HpPotionCooldownMs", copy.Hp.CooldownMs);
+        copy.Mp.CooldownMs = Fallback("MpPotionCooldownMs", copy.Mp.CooldownMs);
+        copy.Hp.ReadIntervalMs = Fallback("HpPotionReadIntervalMs", copy.Hp.ReadIntervalMs);
+        copy.Mp.ReadIntervalMs = Fallback("MpPotionReadIntervalMs", copy.Mp.ReadIntervalMs);
+        copy.Normalize();
+        return copy;
     }
 
     private void Start()
@@ -1001,8 +1000,8 @@ public partial class MainForm : Form
             string page = s.ClassType switch
             {
                 ClassType.Archer => "archery", ClassType.Warrior => "warrior",
-                ClassType.Priest => "priest", ClassType.Mage => "mage",
-                ClassType.BattlePriest => "bp", _ => "assassin"
+                ClassType.Priest or ClassType.BattlePriest => "priest", ClassType.Mage => "mage",
+                _ => "assassin"
             };
             _applying = true;
             try { ShowPage(page); }
@@ -1045,6 +1044,8 @@ public partial class MainForm : Form
         string minor = _engine.MinorActive ? "minor açık" : "minor bekliyor";
         _status.Text = $"{_settings.ClassType} [{_settings.ComboTrigger}]: {combo}  ·  Minor [{_settings.MinorTrigger}]: {minor}  ·  {ComboTitle(_settings.ComboPreset)}";
         if (_settings.Farm.Monster.Enabled) _status.Text += " · " + _engine.MonsterStatus;
+        if (_settings.HealthMana.AnyEnabled && !string.IsNullOrWhiteSpace(_engine.ResourceStatus))
+            _status.Text += " · " + _engine.ResourceStatus;
     }
 
     private async void OnClosing(object? sender, FormClosingEventArgs e)

@@ -154,6 +154,9 @@ public class Settings
 
     public FarmSettings Farm { get; set; } = new();
 
+    [JsonPropertyName("HealthMana")]
+    public HealthManaSettings HealthMana { get; set; } = new();
+
     // null: eski tuş ayarları; yerleşim kullanıcı kaydedene kadar otomatik etkinleştirilmez.
     public SkillLayout? SkillLayout { get; set; }
 
@@ -344,6 +347,7 @@ public class Settings
         profile.MinorTrigger = MinorTrigger;
         profile.Hotkeys = Snapshot(Hotkeys);
         profile.Farm = Snapshot(Farm);
+        profile.HealthMana = Snapshot(HealthMana);
         profile.SkillLayout = SkillLayout?.Clone();
     }
 
@@ -442,6 +446,10 @@ public class Settings
         AddOut(ComboKey3);
         AddOut(InsertKey);
         AddOut(LightFeetKey);
+        HealthMana ??= new();
+        HealthMana.Normalize();
+        AddOut(HealthMana.Hp.FallbackKey);
+        AddOut(HealthMana.Mp.FallbackKey);
         if (ZKey.Length > 0) AddOut(ZAttackKey);
         // 3-5-W presetinin boş override alanları gerçek 3/5 çıkışlarıdır.
         if (ComboPreset is ComboCatalog.FiveSlideThreeSlide or "3-5-w-3-5-w" or ComboCatalog.ThreeSlideFiveSlide)
@@ -465,11 +473,13 @@ public class Settings
         if (outputs.Any(k => !InputSender.TryGetVkCode(k, out _) || k is "XBUTTON1" or "XBUTTON2" or "SHIFT" or "CTRL" or "ALT" or "ENTER" or "ESCAPE"))
             throw new ArgumentException("Çıkış tuşları harf, rakam, SPACE veya F1–F20 olmalı.");
 
-        if ((SkillLayout == null && outputs.Distinct().Count() != outputs.Count) || outputs.Intersect(triggers).Any())
+        if ((SkillLayout == null && outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count() != outputs.Count) ||
+            outputs.Intersect(triggers, StringComparer.OrdinalIgnoreCase).Any())
             throw new ArgumentException("Skill, slide, R, Minor, pot/mana, Z ve tetik tuşları çakışmamalı.");
 
         if (Farm == null) throw new ArgumentException("Farm ayarları boş olamaz.");
         Farm.Validate(outputs.Concat(triggers).Concat(new[] { Hotkeys.Start, Hotkeys.Stop }));
+        HealthMana.Validate(outputs.Concat(triggers).Concat(new[] { Hotkeys.Start, Hotkeys.Stop }));
 
         if (JitterRange < 0 || JitterRange > 50)
             throw new ArgumentException("Jitter aralığı 0–50 ms olmalı.");
@@ -620,6 +630,79 @@ public class Hotkeys
     public string EmergencyStop { get; set; } = "F12";
 }
 
+public enum ResourceKind { Hp, Mp }
+
+public sealed class HealthManaSettings
+{
+    [JsonPropertyName("Hp")]
+    public PotionLaneSettings Hp { get; set; } = new() { SkillId = ResourceReader.HpPotionSkillId, ThresholdPercent = 45 };
+
+    [JsonPropertyName("Mp")]
+    public PotionLaneSettings Mp { get; set; } = new() { SkillId = ResourceReader.MpPotionSkillId, ThresholdPercent = 35 };
+
+    public bool AnyEnabled => Hp.Enabled || Mp.Enabled;
+
+    public void Normalize()
+    {
+        Hp ??= new PotionLaneSettings();
+        Mp ??= new PotionLaneSettings();
+        Hp.SkillId = ResourceReader.HpPotionSkillId;
+        Mp.SkillId = ResourceReader.MpPotionSkillId;
+        Hp.Normalize();
+        Mp.Normalize();
+    }
+
+    public void Validate(IEnumerable<string> reserved)
+    {
+        Normalize();
+        Hp.Validate("HP", reserved);
+        Mp.Validate("MP", reserved);
+        if (Hp.FallbackKey.Length > 0 && Mp.FallbackKey.Length > 0 &&
+            Hp.FallbackKey.Equals(Mp.FallbackKey, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("HP ve MP pot fallback tuşları farklı olmalı.");
+    }
+}
+
+public sealed class PotionLaneSettings
+{
+    public bool Enabled { get; set; }
+    public string SkillId { get; set; } = "";
+    public int ThresholdPercent { get; set; } = 45;
+    public string FallbackKey { get; set; } = "";
+    public UiRegion Region { get; set; } = new();
+    public int ClientWidth { get; set; }
+    public int ClientHeight { get; set; }
+    public int CooldownMs { get; set; } = 1500;
+    public int ReadIntervalMs { get; set; } = 350;
+
+    public void Normalize()
+    {
+        FallbackKey = (FallbackKey ?? "").Trim().ToUpperInvariant();
+        Region ??= new();
+        CooldownMs = Math.Clamp(CooldownMs, 250, 30000);
+        ReadIntervalMs = Math.Clamp(ReadIntervalMs, 100, 5000);
+    }
+
+    public void Validate(string name, IEnumerable<string> reserved)
+    {
+        Normalize();
+        if (ThresholdPercent is < 1 or > 99)
+            throw new ArgumentException($"{name} pot eşiği 1-99 olmalı.");
+        if (CooldownMs is < 250 or > 30000)
+            throw new ArgumentException($"{name} pot cooldown 250-30000 ms olmalı.");
+        if (ReadIntervalMs is < 100 or > 5000)
+            throw new ArgumentException($"{name} okuma aralığı 100-5000 ms olmalı.");
+        if (FallbackKey.Length > 0)
+        {
+            if (!InputSender.TryGetVkCode(FallbackKey, out _) ||
+                FallbackKey is "XBUTTON1" or "XBUTTON2" or "SHIFT" or "CTRL" or "ALT" or "ENTER" or "ESCAPE")
+                throw new ArgumentException($"{name} pot fallback tuşu geçersiz.");
+        }
+        if (Region.W == 0 && Region.H == 0 && Region.X == 0 && Region.Y == 0) return;
+        if (!Region.IsSet) throw new ArgumentException($"{name} pot OCR bölgesi en az 8x8 olmalı.");
+    }
+}
+
 // Çalışma modu (Hold / Toggle)
 public enum RunMode { Hold, Toggle }
 
@@ -709,6 +792,7 @@ public class Profile
     public string? LightFeetKey { get; set; }
     public int? JitterRange { get; set; }
     public FarmSettings? Farm { get; set; }
+    public HealthManaSettings? HealthMana { get; set; }
     public SkillLayout? SkillLayout { get; set; }
 
     /// <summary>
@@ -719,6 +803,7 @@ public class Profile
         settings.ClassType = ClassType;
         settings.SkillLayout = SkillLayout?.Clone();
         settings.Farm = Farm == null ? new FarmSettings() : Settings.Snapshot(Farm);
+        settings.HealthMana = HealthMana == null ? new HealthManaSettings() : Settings.Snapshot(HealthMana);
         if (ComboPreset != null) settings.ComboPreset = ComboPreset;
         if (ComboSpeedMs.HasValue) settings.ComboSpeedMs = ComboSpeedMs.Value;
         if (ComboKey1 != null) settings.ComboKey1 = ComboKey1;

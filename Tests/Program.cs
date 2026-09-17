@@ -233,6 +233,33 @@ async Task WithEngine(Func<MacroEngine, FakeInput, Settings, Task> test, Action<
     finally { File.Delete(path); }
 }
 
+{
+    var s = FastSettings();
+    s.ActiveProfile = "Default";
+    s.ClassType = ClassType.Priest;
+    s.ComboPreset = "rr";
+    s.ComboKey1 = "F6";
+    s.HealthMana.Hp.Enabled = true;
+    s.HealthMana.Hp.FallbackKey = "8";
+    s.SkillLayout = new SkillLayout { VisibleBars = 1, Assignments = [new SkillAssignment { Bar = 1, Slot = 4, SkillId = "Priest_Malice" }] };
+    s.StoreJobDraft();
+    s.SwitchJob(ClassType.BattlePriest);
+    s.ComboPreset = "bp-rr";
+    s.ComboKey1 = "F9";
+    s.Timings.SkillKeyHold = 77;
+    s.HealthMana.Hp.FallbackKey = "9";
+    s.SkillLayout = new SkillLayout { VisibleBars = 2, Assignments = [new SkillAssignment { Bar = 2, Slot = 5, SkillId = "Priest_Helis" }] };
+    s.StoreJobDraft();
+    s.SwitchJob(ClassType.Priest);
+    Check(s.ComboPreset == "rr" && s.ComboKey1 == "F6" && s.HealthMana.Hp.FallbackKey == "8" &&
+        s.SkillLayout.Resolve("Priest_Malice") == new SkillAddress(1, 4), "Priest draft overwritten by BP");
+    s.SwitchJob(ClassType.BattlePriest);
+    Check(s.ComboPreset == "bp-rr" && s.ComboKey1 == "F9" && s.Timings.SkillKeyHold == 77 &&
+        s.HealthMana.Hp.FallbackKey == "9" && s.SkillLayout.Resolve("Priest_Helis") == new SkillAddress(2, 5),
+        "BattlePriest draft not restored");
+    Pass("Priest and BattlePriest drafts preserve keys, timings, layout and pots independently");
+}
+
 foreach (var preset in new[] { "3-5", "5-3", "3-5-w", "3-w-5-w", "70-72", "70-60", "70-72-60", "assassin-rr", "bp-rr", "staff-r" })
 {
     var s = FastSettings(); s.ComboPreset = preset; s.ComboKey1 = "F6"; s.ComboKey2 = "F7"; s.ComboKey3 = "F8";
@@ -532,6 +559,144 @@ await WithEngine(async (engine, io, s) =>
     Check(io.Count("W") == 0, "pot lane must not start combo");
     Pass("Minor-Pot taps without interrupting combo");
 }, s => s.MinorPotKey = "F1");
+
+{
+    Check(ResourceReader.Parse(ResourceKind.Hp, "HP 43%", 1)?.Percent == 43, "Percent parse");
+    Check(ResourceReader.Parse(ResourceKind.Mp, "720/1200", 1)?.Percent == 60, "Ratio parse");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "1,234", 1) == null, "Thousands text must not become a ratio");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "-10%", 1) == null, "Negative percent rejected");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "50.5%", 1) == null, "Decimal percent rejected");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "43% 44%", 1) == null, "Ambiguous percents rejected");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "150% 20%", 1) == null, "Invalid percent candidate closes parse");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "40% 100/100", 1) == null, "Mixed percent and ratio rejected");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "120/100", 1) == null, "Impossible ratio rejected");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "999/100 20/100", 1) == null, "Invalid ratio candidate closes parse");
+    Check(ResourceReader.Parse(ResourceKind.Hp, "abc", 1) == null, "Malformed resource OCR rejected");
+    Pass("HP/MP OCR parsing rejects malformed, impossible and ambiguous values");
+}
+
+{
+    var s = FastSettings();
+    s.HealthMana.Hp.Enabled = true;
+    s.HealthMana.Hp.Region = new UiRegion { W = 20, H = 12 };
+    s.HealthMana.Hp.FallbackKey = "F2";
+    s.HealthMana.Hp.ThresholdPercent = 50;
+    s.HealthMana.Hp.CooldownMs = 500;
+    s.HealthMana.Hp.ReadIntervalMs = 100;
+    var io = new FakeInput();
+    var reader = new FakeResourceReader();
+    reader.Values.Enqueue(new ResourceReading(ResourceKind.Hp, 49, Environment.TickCount64));
+    reader.Values.Enqueue(new ResourceReading(ResourceKind.Hp, 49, Environment.TickCount64));
+    var engine = new MacroEngine(s, io, null, reader);
+    engine.Arm();
+    try
+    {
+        await Until(() => io.Count("F2") == 1, "hp pot");
+        await Task.Delay(170);
+        Check(io.Count("F2") == 1, "HP pot ignored cooldown");
+        Pass("HP automation sends fallback below threshold and respects cooldown");
+    }
+    finally { await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
+}
+
+{
+    var s = FastSettings();
+    s.ComboPreset = "rr";
+    s.SkillLayout = new SkillLayout { VisibleBars = 2, Assignments = [new SkillAssignment { Bar = 2, Slot = 3, SkillId = "Spike" }] };
+    s.HealthMana.Hp.Enabled = true;
+    s.HealthMana.Hp.Region = new UiRegion { W = 20, H = 12 };
+    s.HealthMana.Hp.FallbackKey = "7";
+    s.HealthMana.Hp.ThresholdPercent = 50;
+    s.HealthMana.Hp.ReadIntervalMs = 100;
+    s.Timings.SkillKeyHold = 20;
+    var io = new FakeInput();
+    var reader = new FakeResourceReader();
+    var engine = new MacroEngine(s, io, null, reader);
+    engine.Arm();
+    try
+    {
+        io.Held[s.ComboTrigger] = true;
+        await Until(() => io.Count("F2") >= 1 && io.Count("3") >= 1, "combo selected F2");
+        io.Held[s.ComboTrigger] = false;
+        reader.Values.Enqueue(new ResourceReading(ResourceKind.Hp, 10, Environment.TickCount64));
+        await Until(() => io.Count("F1") >= 1 && io.Count("7") >= 1, "fallback F1 pot");
+        var downs = io.Events.Where(e => e.Down).Select(e => e.Key).ToArray();
+        Check(Array.LastIndexOf(downs, "F1") < Array.LastIndexOf(downs, "7"), "Numeric fallback did not select F1 before slot");
+        Pass("SkillLayout potion fallback is deterministic F1 even after combo selected another bar");
+    }
+    finally { await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
+}
+
+{
+    var s = FastSettings();
+    s.ComboPreset = "rr";
+    s.SkillLayout = new SkillLayout { VisibleBars = 2, Assignments = [new SkillAssignment { Bar = 2, Slot = 3, SkillId = "Spike" }] };
+    s.HealthMana.Hp.Enabled = true;
+    s.HealthMana.Hp.Region = new UiRegion { W = 20, H = 12 };
+    s.HealthMana.Hp.FallbackKey = "7";
+    s.HealthMana.Hp.ThresholdPercent = 50;
+    s.HealthMana.Hp.ReadIntervalMs = 100;
+    s.Timings.SkillKeyHold = 2000;
+    var io = new FakeInput();
+    var reader = new FakeResourceReader();
+    var engine = new MacroEngine(s, io, null, reader);
+    engine.Arm();
+    try
+    {
+        io.Held[s.ComboTrigger] = true;
+        await Until(() => io.Count("3") >= 1, "blocked combo key");
+        reader.Values.Enqueue(new ResourceReading(ResourceKind.Hp, 10, Environment.TickCount64));
+        await Task.Delay(1700);
+        io.Held[s.ComboTrigger] = false;
+        await Task.Delay(250);
+        Check(io.Count("7") == 0 && engine.ResourceStatus.Contains("eski"), "Stale potion reading dispatched after waiting on combo");
+        Pass("Potion reading freshness is rechecked while waiting for dispatcher");
+    }
+    finally { await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(3)); }
+}
+
+{
+    var s = FastSettings();
+    s.HealthMana.Mp.Enabled = true;
+    s.HealthMana.Mp.Region = new UiRegion { W = 20, H = 12 };
+    s.HealthMana.Mp.ThresholdPercent = 80;
+    s.HealthMana.Mp.ReadIntervalMs = 100;
+    var io = new FakeInput();
+    var reader = new FakeResourceReader();
+    reader.Values.Enqueue(new ResourceReading(ResourceKind.Mp, 20, Environment.TickCount64));
+    var engine = new MacroEngine(s, io, null, reader);
+    engine.Arm();
+    try
+    {
+        await Until(() => engine.ResourceStatus.Contains("tuşu bulunamadı"), "missing mp binding status");
+        Check(io.Events.IsEmpty && engine.ResourceStatus.Contains("tuşu bulunamadı"), "Missing MP binding sent input");
+        Pass("MP automation reports missing binding and sends nothing");
+    }
+    finally { await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
+}
+
+{
+    var s = FastSettings();
+    s.HealthMana.Hp.Enabled = true;
+    s.HealthMana.Hp.Region = new UiRegion { W = 20, H = 12 };
+    s.HealthMana.Hp.FallbackKey = "F2";
+    s.HealthMana.Hp.ThresholdPercent = 50;
+    s.HealthMana.Hp.ReadIntervalMs = 100;
+    var io = new FakeInput { Focused = false };
+    var reader = new FakeResourceReader();
+    reader.Values.Enqueue(new ResourceReading(ResourceKind.Hp, 10, Environment.TickCount64));
+    var engine = new MacroEngine(s, io, null, reader);
+    engine.Arm();
+    try
+    {
+        await Task.Delay(150);
+        Check(io.Events.IsEmpty && reader.ReadCount == 0, "Unfocused HP lane read or sent input");
+        io.Focused = true;
+        await Until(() => io.Count("F2") == 1, "hp pot after focus");
+        Pass("HP automation pauses on focus loss and resumes without stale input");
+    }
+    finally { await engine.StopAsync().WaitAsync(TimeSpan.FromSeconds(2)); }
+}
 
 await WithEngine(async (engine, io, s) =>
 {
@@ -902,4 +1067,16 @@ sealed class FakeInput : IMacroInput
         }
     }
     public void ReleaseAll() { foreach (string key in Down.Keys) KeyUp(key); }
+}
+
+sealed class FakeResourceReader : IResourceReader
+{
+    public readonly ConcurrentQueue<ResourceReading?> Values = new();
+    public int ReadCount;
+    public Task<ResourceReading?> ReadAsync(ResourceKind kind, CancellationToken token)
+    {
+        Interlocked.Increment(ref ReadCount);
+        if (Values.TryDequeue(out var value)) return Task.FromResult(value);
+        return Task.FromResult<ResourceReading?>(null);
+    }
 }

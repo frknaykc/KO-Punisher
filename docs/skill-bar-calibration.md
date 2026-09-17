@@ -1,6 +1,7 @@
 # Skill Bar ve görsel kalibrasyon
 
-- Job sayfalarındaki **Skill Bar** sekmesi: Archer, Assassin (Rogue), Priest, Battle Priest, Mage ve Warrior.
+- Job sayfalarındaki **Skill Bar** sekmesi: Warrior, Assassin, Archery, Mage ve Priest. Battle Priest ayrı ana sayfa değildir; Priest içindeki `bp-rr` modu aynı skill bar yüzeyini kullanır.
+- Her job alt sayfasında sağda sabit, salt-okunur Skill Bar önizlemesi kalır; tam katalog, sürükle-bırak, bar seçimi ve OCR kalibrasyonu yalnız **Skill Bar** sekmesindedir.
 - Sağdaki havuz, seçili job için paketlenmiş `JobSkillCatalog` ikonlarını gösterir. Arama ve kategori filtresi vardır. Bu katalog tüm oyun/sunucu sürümlerinin eksiksiz skill listesi değildir; kaynak/kapsam için `skill-catalog-sources.md`.
 - Solda F1–F8, her barda 1–9/0 slotları. Havuzdan kopyala; slotlar arasında sürükleyerek taşı; sağ tık/Delete ile temizle.
 - İlk düzenlemeden itibaren yerleşim eski sayısal skill atamalarının yerine geçer. **Skill bar kaydet** job taslağını diske kaydeder. Üstteki **Kaydet** geçerli ayarları profile kaydeder. Tamamlanmamış bar saklanabilir fakat eksik combo başlatılamaz.
@@ -16,7 +17,7 @@ Arrow Shower F1/5 ve Multiple Shot F1/6 ise:
 
 Motor skill kimliğinden F barı ve tuşu çözer. Aynı slot numarası farklı barlarda kullanılabilir. Bar değiştirme ve skill basma iki lane arasında kilitlidir. Odak kaybı, iptal, acil durdurma ve elle bar değişikliği kontrolleri korunur.
 
-Diğer combo/presetlerde saldırı kategorisindeki skiller F barı/slot sırasına göre kullanılır; birincil saldırıyı önce yerleştirin. `70-72`, `70-60`, `70-72-60` adları için katalogda güvenilir seviye metadatası yoktur: ilk iki/üç saldırı sırası kullanılır, isimden seviye tahmini yapılmaz. Rogue rotasyonunda yerleştirilmiş Spike önceliklidir; kalan saldırılar sıra/cooldown ile yürütülür. Destek ikonları saldırı rotasyonuna girmez. Kimliği olmayan eski pot/insert gibi sayısal alanlar F1'e aittir. F barı tuşuyla çakışan başlat/durdur/tetik kısayolları çalıştırma öncesinde reddedilir.
+Diğer combo/presetlerde saldırı kategorisindeki skiller F barı/slot sırasına göre kullanılır; birincil saldırıyı önce yerleştirin. `70-72`, `70-60`, `70-72-60` adları için katalogda güvenilir seviye metadatası yoktur: ilk iki/üç saldırı sırası kullanılır, isimden seviye tahmini yapılılmaz. Rogue rotasyonunda yerleştirilmiş Spike önceliklidir; kalan saldırılar sıra/cooldown ile yürütülür. Destek ikonları saldırı rotasyonuna girmez. `HP Potion` ve `MP Potion` consumable ikonları otomatik HP/MP pot için bar adresi sağlar; yoksa Diğer sekmesindeki fallback tuş kullanılır. Bu iki sembol yerel UI/katalog sembolüdür, gerçek oyun pot ikon eşleştirme şablonu olarak doğrulanmadı. Kimliği olmayan eski insert gibi sayısal alanlar F1'e aittir. F barı tuşuyla çakışan başlat/durdur/tetik kısayolları çalıştırma öncesinde reddedilir.
 
 ## OCR ile kalibre et
 

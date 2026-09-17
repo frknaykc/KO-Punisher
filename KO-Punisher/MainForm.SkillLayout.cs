@@ -14,6 +14,7 @@ public partial class MainForm
             if (_applying) return;
             _settings.SkillLayout = _skillLayoutEditor.GetLayout();
             UpdateCalibratedKeys();
+            RefreshSkillPreview();
         };
         _skillLayoutEditor.SaveRequested += (_, _) =>
         {
@@ -27,6 +28,7 @@ public partial class MainForm
                 draft.SaveJobDrafts(_settingsPath);
                 _settings = draft;
                 _skillLayoutEditor.MarkSaved();
+                RefreshSkillPreview();
                 _status.Text = "Skill bar kaydedildi. Eksik saldırı skilleri varsa Başlat engellenir.";
             }
             catch (Exception ex) { _status.Text = "Skill bar kaydedilemedi: " + ex.Message; }
@@ -43,5 +45,10 @@ public partial class MainForm
         SetKey("ComboKey3", _settings.ComboKey3);
         SetKey("MinorPedalKey", _settings.MinorPedalKey);
         SetKey("LightFeetKey", _settings.LightFeetKey);
+    }
+
+    private void RefreshSkillPreview()
+    {
+        _skillPreview.LoadLayout(_settings.ClassType, _settings.SkillLayout);
     }
 }

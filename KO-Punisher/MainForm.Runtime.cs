@@ -15,7 +15,7 @@ public partial class MainForm
     {
         "assassin" => ClassType.Assassin, "archery" => ClassType.Archer,
         "warrior" => ClassType.Warrior, "priest" => ClassType.Priest,
-        "mage" => ClassType.Mage, "bp" => ClassType.BattlePriest, _ => null
+        "mage" => ClassType.Mage, _ => null
     };
 
     private void AddRuntimeControls(Control parent)

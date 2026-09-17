@@ -15,9 +15,9 @@ internal static class JobSkillCatalogTests
         void Pass(string name) { passed++; Console.WriteLine("PASS " + name); }
         var counts = new Dictionary<ClassType, int>
         {
-            [ClassType.Warrior] = 58, [ClassType.Priest] = 99,
-            [ClassType.BattlePriest] = 99, [ClassType.Mage] = 91,
-            [ClassType.Archer] = 44, [ClassType.Assassin] = 38
+            [ClassType.Warrior] = 60, [ClassType.Priest] = 101,
+            [ClassType.BattlePriest] = 101, [ClassType.Mage] = 93,
+            [ClassType.Archer] = 46, [ClassType.Assassin] = 40
         };
         foreach (var (job, count) in counts)
         {
@@ -31,7 +31,8 @@ internal static class JobSkillCatalogTests
             {
                 Check(skill.Category is "Attack" or "Buff" or "Heal" or "Utility", "Unknown category");
                 Check(!string.IsNullOrWhiteSpace(skill.Name), "Empty name");
-                Check(Uri.TryCreate(skill.SourceUrl, UriKind.Absolute, out var uri) && uri.Scheme == "https",
+                Check(skill.SourceUrl.StartsWith("local:", StringComparison.Ordinal) ||
+                    (Uri.TryCreate(skill.SourceUrl, UriKind.Absolute, out var uri) && uri.Scheme == "https"),
                     "Missing HTTPS provenance");
                 Check(skill.IconFile == "" || (skill.IconFile.StartsWith("catalog/", StringComparison.Ordinal) &&
                     skill.IconFile.EndsWith(".png", StringComparison.Ordinal) && !skill.IconFile.Contains("..") &&
@@ -42,11 +43,12 @@ internal static class JobSkillCatalogTests
             }
         }
         Pass("All six jobs have reviewed coverage, valid metadata and consistent indexes");
-        Check(counts.Keys.SelectMany(JobSkillCatalog.ForJob).Select(s => s.Id).Distinct().Count() == 309,
+        Check(counts.Keys.SelectMany(JobSkillCatalog.ForJob).Select(s => s.Id).Distinct().Count() == 311,
             "Global catalog size changed");
         Check(JobSkillCatalog.IdsForJob(ClassType.Priest).SetEquals(JobSkillCatalog.IdsForJob(ClassType.BattlePriest)),
             "Battle Priest must share Priest's candidate pool");
-        Check(JobSkillCatalog.ForJob(ClassType.Priest).All(s => s.Id.StartsWith("Priest_", StringComparison.Ordinal)),
+        Check(JobSkillCatalog.ForJob(ClassType.Priest).All(s => s.Id.StartsWith("Priest_", StringComparison.Ordinal) ||
+            s.Id.StartsWith("Consumable_", StringComparison.Ordinal)),
             "Priest IDs must not collide with Rogue");
         Pass("Shared priest pool has isolated IDs");
         foreach (var id in new[] { "MultipleShot", "ArrowShower", "LightingShot", "PowerShot" })

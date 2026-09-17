@@ -14,9 +14,12 @@ public sealed class MacroEngine
     private readonly SkillRotation _rotation;
     private readonly SkillDispatcher _dispatcher;
     private readonly IMonsterReader? _monsterReader;
+    private readonly IResourceReader? _resourceReader;
     private readonly BuffScheduler _buffs;
     private string _monsterStatus = "";
+    private string _resourceStatus = "";
     public string MonsterStatus => Volatile.Read(ref _monsterStatus);
+    public string ResourceStatus => Volatile.Read(ref _resourceStatus);
     private CancellationTokenSource? _stop;
     private Task _completion = Task.CompletedTask;
     private volatile bool _armed, _comboActive, _minorActive;
@@ -75,7 +78,7 @@ public sealed class MacroEngine
     public double RemainingSpikeSec => _rotation.SpikeRemaining(Environment.TickCount64) / 1000.0;
     public Task Completion => _completion;
 
-    public MacroEngine(Settings settings, IMacroInput input, IMonsterReader? monsterReader = null)
+    public MacroEngine(Settings settings, IMacroInput input, IMonsterReader? monsterReader = null, IResourceReader? resourceReader = null)
     {
         _settings = JsonSerializer.Deserialize<Settings>(JsonSerializer.Serialize(settings))!;
         SkillCalibration.Apply(_settings, requireComplete: true);
@@ -86,6 +89,11 @@ public sealed class MacroEngine
         _dispatcher = new SkillDispatcher(input);
         _rotation = new SkillRotation(_settings);
         _monsterReader = monsterReader;
+        _resourceReader = resourceReader;
+#if WINDOWS
+        _resourceReader ??= _settings.HealthMana.AnyEnabled
+            ? new WindowResourceReader(_settings.TargetProcess, _settings.HealthMana) : null;
+#endif
         _buffs = new BuffScheduler(_settings.Farm.Buffs);
         if (_settings.Farm.Monster.Enabled && _monsterReader == null)
             throw new ArgumentException("Mob filtresi için OCR okuyucusu gerekli.");
@@ -116,7 +124,8 @@ public sealed class MacroEngine
         {
             await Task.WhenAll(
                 RunLaneAsync(minor: false, token),
-                RunLaneAsync(minor: true, token)).ConfigureAwait(false);
+                RunLaneAsync(minor: true, token),
+                RunPotionLaneAsync(token)).ConfigureAwait(false);
         }
         finally
         {
@@ -418,10 +427,10 @@ public sealed class MacroEngine
             _settings.SkillLayout == null ? null : "MinorHealing", attack: false);
 
         bool forceHp = _settings.ForceHpTrigger.Length > 0 && Held(_settings.ForceHpTrigger);
-        if (_settings.MinorPotKey.Length > 0)
+        if (!_settings.HealthMana.Hp.Enabled && _settings.MinorPotKey.Length > 0)
             await TapAsync(_settings.MinorPotKey, 30, trigger, state, token, attack: false);
 
-        if (!forceHp && _settings.MinorManaKey.Length > 0)
+        if (!forceHp && !_settings.HealthMana.Mp.Enabled && _settings.MinorManaKey.Length > 0)
             await TapAsync(_settings.MinorManaKey, 30, trigger, state, token, attack: false);
 
         int rest = Math.Max(0, _settings.MinorRepeatMs - _settings.MinorHoldMs);
@@ -458,10 +467,12 @@ public sealed class MacroEngine
         CheckLane(trigger, state, token);
         if (attack && _settings.Farm.Monster.Enabled) await CheckMonsterAsync(trigger, state, token);
         CheckLane(trigger, state, token);
-        if (_settings.SkillLayout != null)
+        if (_settings.SkillLayout != null || _settings.HealthMana.AnyEnabled)
         {
-            SkillAddress? address = skill == null ? null : _settings.SkillLayout.Resolve(skill)
-                ?? throw new InvalidOperationException($"Skill bar'da bulunamadı: {skill}");
+            SkillAddress? address = null;
+            if (skill != null && _settings.SkillLayout != null)
+                address = _settings.SkillLayout.Resolve(skill)
+                    ?? throw new InvalidOperationException($"Skill bar'da bulunamadı: {skill}");
             // Kimliği olmayan eski pot/insert tuşları açıkça F1'e aittir.
             if (address == null && key.Length == 1 && char.IsAsciiDigit(key[0]))
                 address = new SkillAddress(1, key == "0" ? 10 : key[0] - '0');
@@ -561,4 +572,167 @@ public sealed class MacroEngine
 
     private sealed class MonsterRejectedException(string message) : Exception(message) { }
     private sealed class HoldReleasedException : Exception { }
+    private sealed class PotionReadingStaleException : Exception { }
+
+    private async Task RunPotionLaneAsync(CancellationToken token)
+    {
+        if (!_settings.HealthMana.AnyEnabled) return;
+        var nextRead = new Dictionary<ResourceKind, long> { [ResourceKind.Hp] = 0, [ResourceKind.Mp] = 0 };
+        var nextUse = new Dictionary<ResourceKind, long> { [ResourceKind.Hp] = 0, [ResourceKind.Mp] = 0 };
+        var state = new LaneState { Epoch = Volatile.Read(ref _focusEpoch) };
+        try
+        {
+            while (true)
+            {
+                try
+                {
+                    CheckEmergency(token);
+                    if (!TargetAvailable() || state.Epoch != Volatile.Read(ref _focusEpoch))
+                    {
+                        state.Epoch = Volatile.Read(ref _focusEpoch);
+                        Volatile.Write(ref _resourceStatus, "HP/MP: oyun ön planda değil");
+                        await Task.Delay(100, token).ConfigureAwait(false);
+                        continue;
+                    }
+                    long now = Environment.TickCount64;
+                    await MaybePotionAsync(ResourceKind.Hp, nextRead, nextUse, state, token, now).ConfigureAwait(false);
+                    await MaybePotionAsync(ResourceKind.Mp, nextRead, nextUse, state, token, now).ConfigureAwait(false);
+                    await Task.Delay(25, token).ConfigureAwait(false);
+                }
+                catch (HoldReleasedException)
+                {
+                    state.Epoch = Volatile.Read(ref _focusEpoch);
+                    Volatile.Write(ref _resourceStatus, "HP/MP: odak değişti, beklemede");
+                    _dispatcher.Invalidate();
+                    await Task.Delay(100, token).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Volatile.Write(ref _resourceStatus, "HP/MP hata: " + ex.Message);
+            Interlocked.CompareExchange(ref _error, ex.Message, null);
+            InputDiagnostics.Record("resource_error", new { error = ex.Message, type = ex.GetType().Name });
+            _stop!.Cancel();
+        }
+    }
+
+    private async Task MaybePotionAsync(ResourceKind kind, Dictionary<ResourceKind, long> nextRead,
+        Dictionary<ResourceKind, long> nextUse, LaneState state, CancellationToken token, long now)
+    {
+        var lane = kind == ResourceKind.Hp ? _settings.HealthMana.Hp : _settings.HealthMana.Mp;
+        if (!lane.Enabled) return;
+        string name = kind == ResourceKind.Hp ? "HP" : "MP";
+        if (!lane.Region.IsSet)
+        {
+            Volatile.Write(ref _resourceStatus, $"{name}: bölge çizilmedi");
+            nextRead[kind] = now + Math.Max(500, lane.ReadIntervalMs);
+            return;
+        }
+        if (now < nextRead[kind]) return;
+        nextRead[kind] = now + lane.ReadIntervalMs;
+        if (_resourceReader == null)
+        {
+            Volatile.Write(ref _resourceStatus, $"{name}: OCR okuyucu yok");
+            return;
+        }
+        using var readStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ResourceReading?> reading = _resourceReader.ReadAsync(kind, readStop.Token);
+        _ = reading.ContinueWith(t => _ = t.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        try
+        {
+            long deadline = Environment.TickCount64 + 1500;
+            while (!reading.IsCompleted)
+            {
+                CheckLaneForPotion(state, token);
+                if (Environment.TickCount64 >= deadline)
+                {
+                    readStop.Cancel();
+                    Volatile.Write(ref _resourceStatus, $"{name}: OCR zaman aşımı");
+                    return;
+                }
+                await Task.Delay(5, token).ConfigureAwait(false);
+            }
+            var value = await reading.ConfigureAwait(false);
+            CheckLaneForPotion(state, token);
+            if (!IsFreshReading(value, kind))
+            {
+                Volatile.Write(ref _resourceStatus, $"{name}: okunamadı/eski");
+                return;
+            }
+            Volatile.Write(ref _resourceStatus, $"{name}: %{value.Value.Percent}");
+            if (value.Value.Percent >= lane.ThresholdPercent || Environment.TickCount64 < nextUse[kind]) return;
+            SkillAddress? address = _settings.SkillLayout?.Resolve(lane.SkillId);
+            string key = address?.Key ?? lane.FallbackKey;
+            if (_settings.SkillLayout != null && address == null && key.Length > 0)
+            {
+                if (key.Length == 1 && char.IsAsciiDigit(key[0]))
+                    address = new SkillAddress(1, key == "0" ? 10 : key[0] - '0');
+                else
+                {
+                    Volatile.Write(ref _resourceStatus, $"{name}: fallback SkillLayout ile F1 sayı tuşu olmalı");
+                    return;
+                }
+            }
+            if (address == null && key.Length == 0)
+            {
+                Volatile.Write(ref _resourceStatus, $"{name}: pot tuşu bulunamadı");
+                return;
+            }
+            bool marked = false;
+            void Guard()
+            {
+                CheckLaneForPotion(state, token);
+                if (!IsFreshReading(value, kind)) throw new PotionReadingStaleException();
+            }
+            try
+            {
+                await _dispatcher.TapAsync(address, key, 30, 20, 30, Guard,
+                    ms => WaitPotionAsync(ms, state, token), token, output =>
+                    {
+                        string actual = address?.Key ?? key;
+                        if (!marked && output.Equals(actual, StringComparison.OrdinalIgnoreCase))
+                        {
+                            marked = true;
+                            nextUse[kind] = Environment.TickCount64 + lane.CooldownMs;
+                        }
+                    }).ConfigureAwait(false);
+                Volatile.Write(ref _resourceStatus, $"{name}: pot basıldı (%{value.Value.Percent})");
+            }
+            catch (PotionReadingStaleException)
+            {
+                Volatile.Write(ref _resourceStatus, $"{name}: eski okuma atlandı");
+            }
+        }
+        finally { readStop.Cancel(); }
+    }
+
+    private static bool IsFreshReading(ResourceReading? reading, ResourceKind expected)
+    {
+        if (reading == null || reading.Value.Kind != expected || reading.Value.Percent is < 0 or > 100)
+            return false;
+        long age = Environment.TickCount64 - reading.Value.CapturedAt;
+        return age is >= 0 and <= 1500;
+    }
+
+    private void CheckLaneForPotion(LaneState state, CancellationToken token)
+    {
+        CheckEmergency(token);
+        if (!TargetAvailable() || state.Epoch != Volatile.Read(ref _focusEpoch))
+            throw new HoldReleasedException();
+    }
+
+    private async Task WaitPotionAsync(int milliseconds, LaneState state, CancellationToken token)
+    {
+        long end = Environment.TickCount64 + Math.Max(0, milliseconds);
+        do
+        {
+            CheckLaneForPotion(state, token);
+            long left = end - Environment.TickCount64;
+            if (left <= 0) return;
+            await Task.Delay((int)Math.Min(left, 5), token).ConfigureAwait(false);
+        } while (true);
+    }
 }

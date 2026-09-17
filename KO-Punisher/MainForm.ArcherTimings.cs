@@ -17,15 +17,15 @@ public partial class MainForm
 
     private void AddArcherTimingControls(Control parent)
     {
-        Add(parent, Lbl("Hareketli okçu · 5 Slide 3 Slide / 3 Slide 5 Slide · tüm süreler ms", 12, 126));
-        Add(parent, Lbl("Yalnız bu bölüm kullanılır; yukarıdaki genel süreler, Adım arası ve jitter uygulanmaz.", 12, 150));
+        Add(parent, Lbl("Hareketli okçu · 5 Slide 3 Slide / 3 Slide 5 Slide · tüm süreler ms", 12, 330));
+        Add(parent, Lbl("Yalnız bu bölüm kullanılır; yukarıdaki genel süreler, Adım arası ve jitter uygulanmaz.", 12, 354));
         for (int i = 0; i < ArcherTimingFields.Length; i++)
         {
             var field = ArcherTimingFields[i];
             int x = 12 + i * 157;
-            var label = Lbl(field.Title, x, 180);
+            var label = Lbl(field.Title, x, 384);
             Add(parent, label);
-            var number = Num(field.Key, x, 200, field.Min, 2000);
+            var number = Num(field.Key, x, 404, field.Min, 2000);
             Add(parent, number);
             number.ValueChanged -= ArcherTimingChanged;
             number.ValueChanged += ArcherTimingChanged;
@@ -34,7 +34,7 @@ public partial class MainForm
         }
         var reference = UiTheme.NavButton("SteelSeries başlangıcı uygula");
         reference.Name = "ArcherReference";
-        reference.Location = new Point(12, 245);
+        reference.Location = new Point(12, 449);
         reference.Width = 255;
         _help.SetToolTip(reference, "Referans süreler");
         reference.Click += (_, _) =>
@@ -63,7 +63,7 @@ public partial class MainForm
         Add(parent, reference);
         _archerTimingSequence = new Label
         {
-            Location = new Point(12, 290), Size = new Size(790, 110), ForeColor = UiTheme.Gold
+            Location = new Point(12, 494), Size = new Size(790, 110), ForeColor = UiTheme.Gold
         };
         Add(parent, _archerTimingSequence);
         UpdateArcherTimingSequence();

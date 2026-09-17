@@ -6,7 +6,6 @@ namespace KOPunisher;
 
 public partial class MainForm
 {
-    private Control? _diagnosticsPage;
     private readonly Label _diagnosticInfo = new() { AutoSize = false, Location = new Point(12, 215), Size = new Size(810, 100), ForeColor = UiTheme.Text };
     private readonly TextBox _diagnosticKey = new() { Text = "3", Location = new Point(70, 116), Width = 100, MaxLength = 12 };
     private readonly NumericUpDown _diagnosticHold = new() { Minimum = 25, Maximum = 500, Value = 100, Location = new Point(280, 116), Width = 80 };

@@ -5,10 +5,10 @@ Windows / .NET 8 / WinForms. Varsayılan gönderim `keybd_event`; `SendInput` ta
 ## Kullanım
 
 1. `KO-Punisher.exe` dosyasını Windows'ta açın. Kaynaktan derleme yapıyorsanız aşağıdaki komutları kullanın.
-2. Skill tuşlarını oyun barınızla eşleştirin. Yeni görsel editör için [Skill Bar ve kalibrasyon](skill-bar-calibration.md) rehberini kullanın; bu bölümdeki sayısal alanlar eski yerleşim modunu anlatır. Varsayılan Spike `3`, filler tuşları `4–9`. Filler sırası virgülle ayrılır; isimler `Thrust,BloodyBeast,Stab,Cut,Shock,Jab`. Boş skill tuşu o filleri kapatır; boş filler sırası yalnızca Spike + W/R çalıştırır.
+2. **Skill Bar** sekmesinde ikonları oyun barınızla eşleştirin; [Skill Bar ve kalibrasyon](skill-bar-calibration.md) rehberini kullanın. Job alt sekmelerinin sağındaki sabit panelde F1–F8 arasında geçiş yaparak atamaları görebilirsiniz. Eski ayrı skill bar editörü kaldırıldı; kayıtlı eski tuş ayarları korunur.
 3. **Combo tetik tuşu** varsayılan `XBUTTON1` (farenin bir yan tuşu), **Minor tetik tuşu** `XBUTTON2` (diğer yan tuşu). Yan tuş yoksa örneğin `F6` ve `F7` seçebilirsiniz. Pedalınız klavye tuşu üretiyorsa onun tuşunu tetik olarak yazın.
 4. **Minor skill tuşu**, tetik tuşundan farklıdır: oyunda Minor hangi slottaysa onu yazın; örneğin `2`. Başlangıçta boştur ve Minor kapalıdır.
-5. **Ayarları kaydet** düğmesine basın. Başarılı kayıt yolu ekranda görünür: `%LOCALAPPDATA%\KO-Punisher\settings.json`. Sonraki açılışta buradan yüklenir. Başlat tek başına ayarları kalıcı kaydetmez.
+5. **Kaydet** düğmesine basın. Başarılı kayıt yolu ekranda görünür: `%LOCALAPPDATA%\KO-Punisher\settings.json`. Sonraki açılışta buradan yüklenir. Başlat tek başına ayarları kalıcı kaydetmez.
 6. **Başlat / Hazırla** düğmesi hiçbir combo başlatmaz. Oyuna geçin, tetik tuşlarını bırakın; ardından istediğiniz tetiği basılı tutun.
    - Combo tetiği: **Skill → W → R** döngüsü. Spike hazırsa önceliklidir; değilse hazır filler sıradan seçilir. Hiçbir skill hazır değilken W/R devam eder.
    - Minor tetiği: kendi tekrar periyodunda yalnızca Minor. Combo ile aynı anda veya tek başına kullanılabilir.
@@ -20,11 +20,21 @@ Kontrol polling ile yapılır; odak kontrolü ile native gönderim arasında ço
 
 ## Job ayarları, tek tur ve durum paneli
 
+- Ana menü yalnız şu sıradadır: Warrior, Assassin, Archery, Mage, Priest, Farm, Upgrade, Ayarlar. Home, ayrı Battle Priest, ayrı OCR ve ayrı Tanılama ana sayfaları yoktur.
 - Her job için tuşlar, combo, Minor, tetik, zamanlamalar ve cooldown ayarları bağımsızdır; aynı job farklı adlandırılmış profillerde de ayrılır. İlk ziyaret diğer job tuşlarını kopyalamaz.
+- Priest sayfasında `bp-rr` seçildiğinde Battle Priest modu aynı Priest yüzeyi içinde saklanır. Eski BP taslakları Priest sayfasına dönünce korunur; ayrı ana menüye taşınmaz.
 - Job geçişinde ve normal kapanışta taslaklar `%LOCALAPPDATA%\KO-Punisher\settings.json` içindeki `JobDrafts` alanına atomik kaydedilir. Eksik tuşlu taslak saklanabilir, fakat Başlat/tek tur doğrulamasından geçemez. Zorla kapatma son düzenlemeleri kaybettirebilir. Eski ayar dosyaları desteklenir; bozuk dosya otomatik ezilmez.
 - **Atak → 3 sn sonra tek tur**: oyuna geçmek için üç saniye tanır. Seçili combo'nun tam bir motor turunu çalıştırır, tekrarlamaz; fiziksel tetik ve Minor döngüsü gerekmez. Asasta bir tur, sıradaki hazır skill ve seçili R/slide adımlarıdır; bütün filler listesini tek seferde tüketmez. Durdur, acil tuş, odak kaybı veya gönderim hatasında tuşlar bırakılır.
 - **Durum paneli**: aktif job, combo, hazır/çalışıyor/duraklatıldı durumu ve tetikleri sol üstte gösterir. Odak almayan, tıklamayı geçiren ayrı masaüstü penceresidir; oyun içine enjekte edilmez. Exclusive fullscreen üzerinde görünmeyebilir; pencere/borderless modunda denenmelidir. Atak sekmesinden kapatılabilir.
-- Normal makro odak korumasına rağmen **Tanılama → tek tuş** Not Defteri karşılaştırması için bilinçli olarak korunmuştur. OCR combo testi ise oyun odağı kaybında iptal edilir.
+- Normal makro odak korumasına rağmen **Ayarlar → Tanılama → tek tuş** Not Defteri karşılaştırması için bilinçli olarak korunmuştur. Eski bağımsız OCR combo testi kaldırıldı; Skill Bar kalibrasyonu, Farm, Upgrade/envanter ve HP/MP bölge OCR'ı korunur.
+
+## Otomatik HP/MP pot
+
+- Her job sayfasındaki **Diğer** sekmesinde HP ve MP ayrı ayrı açılır. Her kaynak için eşik yüzdesi, fallback tuşu, cooldown, okuma aralığı ve ekran bölgesi bağımsızdır; job/profil taslaklarıyla birlikte saklanır.
+- **Bölge çiz** yalnız oyun istemci alanı içinden seçilir ve pencere boyutuna göre saklanır. Oyun boyutu/UI ölçeği değişirse yeniden kalibre edin.
+- OCR yalnız seçilen HP veya MP bölgesini yakalar. Net tek yüzde (`43%`) ya da net tek `current/max` (`720/1200`) okunursa kullanılır. Boş, belirsiz, birden fazla değerli, imkansız veya eski okuma sıfır sayılmaz; girdi gönderilmez ve durum satırında okunamadı/eksik bağlama bilgisi gösterilir.
+- Skill Bar'a `HP Potion` ve `MP Potion` ikonlarını yerleştirirseniz motor F bar ve sayı tuşunu oradan çözer. Skill Bar etkinse eksik pot atamasında tuş gönderilmez; yerleşim kullanılmıyorsa fallback tuşu F1 barında kullanılır. Job/profil veya yerleşim değişikliği sonraki Başlat işleminde alınır; çalışan motor kendi doğrulanmış ayar kopyasını kullanır. Pot sembolleri arayüz içindir; gerçek oyun pot ikonlarının görsel tanıması henüz doğrulanmadı.
+- Motor yalnız Başlat sonrası, hedef oyun öndeyken, acil durdurma/iptal yokken ve cooldown doluyken pot basar. Girdi SkillDispatcher üzerinden geçtiği için combo/minor ile F bar değişimi yarışına girmez. Odak kaybı, iptal veya hata durumunda basılı tuşlar bırakılır.
 
 ## Farm: buff, mob filtresi ve pazar mesajları
 
@@ -59,7 +69,7 @@ Okçu → Diğer → **SteelSeries başlangıcı uygula**: `5 Slide 3 Slide`, Mu
 
 `5 bas → 230 → 5 bırak → 230 → W bas → 19 → W bırak → 19 → 6 bas → 230 → 6 bırak → 230 → W bas → 19 → W bırak → 0 → başa dön`.
 
-Arayüzde olay sırası tuş/süre değişiklikleriyle güncellenir. Tetik basılıyken tekrar eder; bırakınca devam eden basış bırakılır, sıra durur. Tek tur aynı sürelerle yalnız bir kez çalışır. 0 ms yalnız ek bekleme olmadığı anlamındadır; OS scheduling, hedef/odak kontrolleri ve etkin farm işleri süre ekleyebilir. OCR combo testi tur içinde okumaz, her tam turdan sonra okur; OCR süresi tur arasına eklendiğinden sürekli döngü hızının testi değildir. OCR'da hata metni görülmemesi başarı kanıtı değildir. Hasar anı algılanmaz; casting failed vermeyeceği garanti edilmez.
+Arayüzde olay sırası tuş/süre değişiklikleriyle güncellenir. Tetik basılıyken tekrar eder; bırakınca devam eden basış bırakılır, sıra durur. Tek tur aynı sürelerle yalnız bir kez çalışır. 0 ms yalnız ek bekleme olmadığı anlamındadır; OS scheduling, hedef/odak kontrolleri ve etkin farm işleri süre ekleyebilir. Hasar anı algılanmaz; casting failed vermeyeceği garanti edilmez.
 
 ## Zamanlama
 
@@ -67,21 +77,21 @@ Arayüzde olay sırası tuş/süre değişiklikleriyle güncellenir. Tetik bası
 - Minor varsayılan periyot `100 ms`, basış `25 ms`; bunlar evrensel/garantili sunucu değerleri değil, ayarlanabilir başlangıç değerleridir. Periyot iki basışın başlangıçları arasındaki yaklaşık süredir.
 - Spike `11000 ms`; filler cooldown'ları da başlangıç tahmini olarak `11000 ms`. Gerçek sunucu değerlerine göre ayrı ayrı değiştirin; filler `0` değeri cooldown kontrolünü o skill için kapatır.
 - Cooldown, OS'ye başarılı gönderim anından hesaplanır; oyunda skillin gerçekten uygulandığı bilinmez. Tetiği bırakıp basmak cooldown'u sıfırlamaz. Uygulamayı/motoru yeniden başlatmak tahminleri sıfırlar.
-- Bu sürüm HP/MP kontrol etmez; Minor basılı kaldığı sürece mana tüketebilir. Otomatik pot yoktur.
-- **Tanılama** sekmesinden isteğe bağlı, en fazla 20.000 olaylık kayıt açılır. Normal kullanımda dosyaya input kaydı yapılmaz.
+- HP/MP pot OCR'ı canlı oyunda ayrıca doğrulanmalıdır; Windows testleri gerçek oyun kabulünü kanıtlamaz.
+- **Ayarlar → Tanılama** sekmesinden isteğe bağlı, en fazla 20.000 olaylık kayıt açılır. Normal kullanımda dosyaya input kaydı yapılmaz.
 - Global Başlat/Durdur kısayollarını uygulamadaki ayarlardan kontrol edin. Skill Bar etkin olduğunda motor F1–F8 geçişlerini skill adresine göre yapar; bu barlarla çakışan tetik/kontrol kısayollarını değiştirin.
 
 ## Tuşlar hâlâ oyuna gitmiyorsa
 
 1. Normal makro Not Defteri ön plandayken artık özellikle duraklar.
-2. Not Defteri karşılaştırması için **Tanılama → 3 sn sonra tek tuş** kullanın; normal makroyu açmayın.
+2. Not Defteri karşılaştırması için **Ayarlar → Tanılama → 3 sn sonra tek tuş** kullanın; normal makroyu açmayın.
 3. Oyun yönetici olarak çalışıyorsa uygulamanın yetki seviyesi de eşleşmelidir. Windows `SendInput`, daha yüksek bütünlük seviyeli uygulamalara gönderimi UIPI nedeniyle engelleyebilir. Bu, koruma atlatma yöntemi değildir.
 4. Gönderim API'si başarısız olursa motor durur ve Win32 hata kodunu gösterir. `0` hata kodu, engel olmadığını kanıtlamaz; UIPI nedeni özel olarak raporlanmayabilir.
 5. Not Defteri'nde çalışıp oyunda çalışmıyorsa oyun sentetik inputu kabul etmiyor olabilir. Daha hızlı tekrar bunu çözmez. Driver kurmayın veya güvenlik yazılımını kapatmayın; bu sürüm için oyun içinde çalışıyor garantisi verilmez.
 
 ## Tanılama kaydı gönderme
 
-1. **Tanılama → Kaydı başlat**, ardından üstteki **Başlat**. Oyuna geçip tetik tuşunu birkaç kez basıp bırakın; sonra **Durdur**.
+1. **Ayarlar → Tanılama → Kaydı başlat**, ardından üstteki **Başlat**. Oyuna geçip tetik tuşunu birkaç kez basıp bırakın; sonra **Durdur**.
 2. Tanılama ekranında ortamı seçin: Not Defteri / Oyun sohbeti / Oyun skill-kontrol. Tuş varsayılan `3`, basma süresi `100 ms`.
 3. **3 sn sonra tek tuş** düğmesine basıp hedef pencereye geçin. Bu test tetik hook'una ihtiyaç duymadan gönderim yapar. Her denemeden sonra **Tepki var / Tepki yok** ile kendi gözleminizi kaydedin. Kontrol tuşları çıkış testi olarak kabul edilmez. Durdur/acil tuşu geri sayımı ve basışı iptal eder.
 4. **Kaydı bitir → Log klasörünü aç**. Oluşan `input-*.jsonl` dosyasını paylaşın. Kayıt normalde EXE yanındaki `logs/` içindedir; yazma izni yoksa `%LOCALAPPDATA%\KO-Punisher\logs` kullanılır. Kesin yol ekranda gösterilir.

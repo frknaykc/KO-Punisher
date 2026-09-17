@@ -21,6 +21,7 @@
     <None Include="Fixtures/Inventory/*.gz" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="../KO-Punisher/JobSkillCatalog.cs" Link="JobSkillCatalog.cs" />
     <Compile Include="../KO-Punisher/SkillDispatcher.cs" Link="SkillDispatcher.cs" />
+    <Compile Include="../KO-Punisher/ResourceReader.cs" Link="ResourceReader.cs" />
     <Compile Include="../KO-Punisher/MacroEngine.cs" Link="MacroEngine.cs" />
     <Compile Include="../KO-Punisher/ComboCatalog.cs" Link="ComboCatalog.cs" />
     <Compile Include="../KO-Punisher/FarmSettings.cs" Link="FarmSettings.cs" />
