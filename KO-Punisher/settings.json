@@ -1,0 +1,38 @@
+{
+  "Skills": {
+    "Spike": "3",
+    "Thrust": "4",
+    "BloodyBeast": "5",
+    "Stab": "6",
+    "Cut": "7",
+    "Shock": "8",
+    "Jab": "9"
+  },
+  "FillerOrder": ["Thrust", "BloodyBeast", "Stab", "Cut", "Shock", "Jab"],
+  "Timings": {
+    "SkillKeyHold": 50,
+    "SkillToWDelay": 30,
+    "WKeyHold": 30,
+    "WToRDelay": 20,
+    "RKeyHold": 30,
+    "NextSkillDelay": 120,
+    "RSpamInterval": 800
+  },
+  "Cooldowns": {
+    "Spike": 11000
+  },
+  "ComboTrigger": "XBUTTON1",
+  "MinorTrigger": "XBUTTON2",
+  "MinorRepeatMs": 100,
+  "MinorHoldMs": 25,
+  "SkillCooldowns": {
+    "Thrust": 11000, "BloodyBeast": 11000, "Stab": 11000,
+    "Cut": 11000, "Shock": 11000, "Jab": 11000
+  },
+  "MinorPedalKey": "",
+  "Hotkeys": {
+    "Start": "F8",
+    "Stop": "F9",
+    "EmergencyStop": "F12"
+  }
+}

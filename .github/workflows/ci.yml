@@ -1,0 +1,31 @@
+name: Build and tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build Windows application
+        run: dotnet build KO-Punisher/KO-Punisher.csproj -c Release -warnaserror -p:EnableWindowsTargeting=true
+      - name: Run core regression tests
+        run: dotnet run --project Tests/Tests.csproj -c Release
+      - name: Run OCR preprocessing tests
+        run: dotnet run --project Tests.Ocr.Windows/Pure/Preprocessing.csproj -c Release

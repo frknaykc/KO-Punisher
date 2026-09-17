@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../KO-Punisher/InputSender.cs" Link="InputSender.cs" />
+    <Compile Include="../KO-Punisher/InputDiagnostics.cs" Link="InputDiagnostics.cs" />
+    <Compile Include="../KO-Punisher/InputProbe.cs" Link="InputProbe.cs" />
+    <Compile Include="../KO-Punisher/ForegroundDiagnostics.cs" Link="ForegroundDiagnostics.cs" />
+    <Compile Include="../KO-Punisher/Settings.cs" Link="Settings.cs" />
+    <Compile Include="../KO-Punisher/SkillIconMatcher.cs" Link="SkillIconMatcher.cs" />
+    <Compile Include="../KO-Punisher/SkillCalibration.cs" Link="SkillCalibration.cs" />
+    <Compile Include="../KO-Punisher/SkillLayout.cs" Link="SkillLayout.cs" />
+    <Compile Include="../KO-Punisher/InventoryReview.cs" Link="InventoryReview.cs" />
+    <Compile Include="../KO-Punisher/InventoryTooltip.cs" Link="InventoryTooltip.cs" />
+    <Compile Include="../KO-Punisher/InventoryVision.cs" Link="InventoryVision.cs" />
+    <None Include="Fixtures/SkillIcons/*.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/Inventory/*.gz" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="../KO-Punisher/JobSkillCatalog.cs" Link="JobSkillCatalog.cs" />
+    <Compile Include="../KO-Punisher/SkillDispatcher.cs" Link="SkillDispatcher.cs" />
+    <Compile Include="../KO-Punisher/MacroEngine.cs" Link="MacroEngine.cs" />
+    <Compile Include="../KO-Punisher/ComboCatalog.cs" Link="ComboCatalog.cs" />
+    <Compile Include="../KO-Punisher/FarmSettings.cs" Link="FarmSettings.cs" />
+    <Compile Include="../KO-Punisher/MarketRunner.cs" Link="MarketRunner.cs" />
+    <Compile Include="../KO-Punisher/MacroInput.cs" Link="MacroInput.cs" />
+    <Compile Include="../KO-Punisher/SkillRotation.cs" Link="SkillRotation.cs" />
+    <None Include="../KO-Punisher/settings.json" Link="defaults.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

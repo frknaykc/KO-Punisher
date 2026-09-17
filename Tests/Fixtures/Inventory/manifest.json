@@ -1,0 +1,50 @@
+[
+  {
+    "fixture": "elemental.rgb.gz",
+    "source": "image_fbad65.png",
+    "width": 1920,
+    "height": 1080,
+    "rgb_sha256": "52903e843b3a16c0f59b86e67d617216ae80a7987f133dff5799876304998340",
+    "gzip_bytes": 4199149
+  },
+  {
+    "fixture": "no-tooltip.rgb.gz",
+    "source": "image_3632c3.png",
+    "width": 1920,
+    "height": 1080,
+    "rgb_sha256": "84be4011d17c266108766cee1ed9543b3c01d1e9cae52152dd16551a42a0fd1a",
+    "gzip_bytes": 4223323
+  },
+  {
+    "fixture": "helmet.rgb.gz",
+    "source": "image_8b89f5.png",
+    "width": 1920,
+    "height": 1080,
+    "rgb_sha256": "ebb09962b64d12f5abccd90d1ed08a8454dc6dec118c1e15076c730f5dbc4c8c",
+    "gzip_bytes": 4205352
+  },
+  {
+    "fixture": "potion.rgb.gz",
+    "source": "image_ffe873.png",
+    "width": 1920,
+    "height": 1080,
+    "rgb_sha256": "b61910e15e20acabf2dd2704d6c471ce6077a6af24f52209f377d1de1b9e2f63",
+    "gzip_bytes": 4202758
+  },
+  {
+    "fixture": "enchant-hp.rgb.gz",
+    "source": "image_18264b.png",
+    "width": 1920,
+    "height": 1080,
+    "rgb_sha256": "79165ffc664ccd8df96d7840a7e323dbf255b24f61c64e8f3501e5a1652d1d1b",
+    "gzip_bytes": 3819328
+  },
+  {
+    "fixture": "pathos.rgb.gz",
+    "source": "content_pathos2.png",
+    "width": 326,
+    "height": 321,
+    "rgb_sha256": "8024b62abadf01b3320672cb76647dea16a9c730002ee56fa3c1dedb46cece29",
+    "gzip_bytes": 87649
+  }
+]

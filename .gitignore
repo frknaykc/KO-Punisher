@@ -1,0 +1,47 @@
+# .NET build and publish output
+**/bin/
+**/obj/
+/dist/
+/publish/
+/artifacts/
+/test-download/
+TestResults/
+*.nupkg
+*.snupkg
+*.zip
+
+# Local IDE / OS / Python state
+.vs/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.user
+*.suo
+__pycache__/
+*.py[cod]
+.venv/
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+
+# Runtime logs and local delivery evidence
+logs/
+*.log
+*.jsonl
+/transfer-manifest.json
+/docs/ocr-final-delivery-20260915.md
+/docs/upgrade-test.txt
+/docs/upgrade-auto-test.txt
+/docs/ocr-comparison-20260915.json
+/docs/plans/
+
+# KO-Punisher/settings.json is the shipped default; keep it tracked.

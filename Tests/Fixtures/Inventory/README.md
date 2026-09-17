@@ -1,0 +1,1 @@
+Frames are gzip streams: little-endian int32 width, int32 height, followed by packed RGB bytes. Supplied user screenshots decoded with Pillow; no resampling. Filenames: elemental, no-tooltip, helmet, potion, enchant-hp, pathos. Screenshot data includes the game HUD/chat; do not publish without reviewing.
